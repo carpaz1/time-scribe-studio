@@ -1,4 +1,3 @@
-
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -91,8 +90,11 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
     });
     console.log('Response sent to client with jobId:', jobId);
 
-    // Continue processing asynchronously
-    processVideoCompilation(jobId, req.files, clipsData);
+    // Continue processing asynchronously - FIXED: Properly await this
+    processVideoCompilation(jobId, req.files, clipsData).catch(error => {
+      console.error('Async processing failed for job:', jobId, error);
+      compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
+    });
 
   } catch (error) {
     console.error('Upload endpoint error:', error);
@@ -245,7 +247,6 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
     }
 
     const tempClips = [];
-    let processedCount = 0;
 
     const processClip = (clip, index) => {
       return new Promise((resolve, reject) => {
@@ -276,19 +277,25 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
             '-pix_fmt', 'yuv420p'
           ])
           .output(tempClipPath)
+          .on('start', (commandLine) => {
+            console.log(`FFmpeg clip ${index + 1} started:`, commandLine);
+          })
           .on('progress', (progress) => {
             const subProgress = clipProgress + ((progress.percent || 0) / 100) * (50 / validClips.length);
             compilationProgress.set(jobId, { 
               percent: subProgress, 
               stage: `Processing clip ${index + 1}/${validClips.length}: ${Math.round(progress.percent || 0)}%` 
             });
+            console.log(`Job ${jobId} clip ${index + 1} progress:`, Math.round(progress.percent || 0) + '%');
           })
           .on('end', () => {
-            processedCount++;
-            console.log(`Processed clip ${processedCount}/${validClips.length}`);
+            console.log(`Processed clip ${index + 1}/${validClips.length} for job ${jobId}`);
             resolve();
           })
-          .on('error', reject)
+          .on('error', (err) => {
+            console.error(`Clip ${index + 1} error:`, err);
+            reject(err);
+          })
           .run();
       });
     };
@@ -299,11 +306,13 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
     }
 
     compilationProgress.set(jobId, { percent: 75, stage: 'Concatenating clips...' });
+    console.log(`Job ${jobId}: Starting concatenation of ${tempClips.length} clips`);
 
     // Create concat file list
-    const concatListPath = path.join(tempDir, 'concat_list.txt');
+    const concatListPath = path.join(tempDir, `concat_list_${jobId}.txt`);
     const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
     fs.writeFileSync(concatListPath, concatContent);
+    console.log(`Job ${jobId}: Concat list created at ${concatListPath}`);
 
     // Concatenate all clips
     await new Promise((resolve, reject) => {
@@ -314,7 +323,7 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
         .outputOptions(nvencOptions)
         .output(outputPath)
         .on('start', (commandLine) => {
-          console.log('FFmpeg concat started:', commandLine);
+          console.log(`Job ${jobId}: FFmpeg concat started:`, commandLine);
           compilationProgress.set(jobId, { percent: 80, stage: 'Final encoding...' });
         })
         .on('progress', (progress) => {
@@ -323,13 +332,14 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
             percent: percent, 
             stage: `Final encoding: ${Math.round(progress.percent || 0)}%` 
           });
+          console.log(`Job ${jobId} final encoding progress:`, Math.round(progress.percent || 0) + '%');
         })
         .on('end', () => {
-          console.log('Video compilation completed!');
+          console.log(`Job ${jobId}: Video compilation completed!`);
           resolve();
         })
         .on('error', (err) => {
-          console.error('FFmpeg concat error:', err);
+          console.error(`Job ${jobId}: FFmpeg concat error:`, err);
           reject(err);
         })
         .run();
@@ -344,18 +354,11 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
     if (fs.existsSync(concatListPath)) {
       fs.unlinkSync(concatListPath);
     }
+    console.log(`Job ${jobId}: Temp files cleaned up`);
 
   } catch (error) {
-    console.error('Error processing clips:', error);
+    console.error(`Job ${jobId}: Error processing clips:`, error);
     compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
-    
-    // Clean up temp files
-    tempClips.forEach(tempClip => {
-      if (fs.existsSync(tempClip)) {
-        fs.unlinkSync(tempClip);
-      }
-    });
-    
     throw error;
   }
 }
