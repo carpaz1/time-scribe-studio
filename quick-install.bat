@@ -19,7 +19,7 @@ echo.
 :menu
 echo Choose an option:
 echo [1] Install (First time setup)
-echo [2] Update (Refresh dependencies)
+echo [2] Update (Pull latest dependencies)
 echo [3] Start Application
 echo [4] Start Application (Silent mode)
 echo [5] Exit
@@ -42,51 +42,8 @@ goto menu
 
 :update
 echo.
-echo ===============================================
-echo Timeline Video Editor - Updating Dependencies
-echo ===============================================
-echo.
-
-echo Checking if Node.js is installed...
-node --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERROR: Node.js is not installed!
-    echo Please install Node.js from https://nodejs.org/
-    echo After installing Node.js, run this script again.
-    pause
-    goto menu
-)
-
-echo Node.js found!
-echo.
-
-echo Updating frontend dependencies...
-call npm update
-if %errorlevel% neq 0 (
-    echo ERROR: Failed to update frontend dependencies!
-    pause
-    goto menu
-)
-
-echo.
-echo Updating backend dependencies...
-cd server
-call npm update
-if %errorlevel% neq 0 (
-    echo ERROR: Failed to update backend dependencies!
-    cd ..
-    pause
-    goto menu
-)
-
-cd ..
-
-echo.
-echo ===============================================
-echo Update completed successfully!
-echo ===============================================
-echo.
-pause
+echo Starting update...
+call update.bat
 goto menu
 
 :start

@@ -15,10 +15,17 @@ const PORT = 4000;
 // Store active compilation progress
 const compilationProgress = new Map();
 
-// Middleware with increased limits for large files
+// Middleware with increased limits for large files and longer timeouts
 app.use(cors());
-app.use(express.json({ limit: '50gb' })); // Increase JSON limit
-app.use(express.urlencoded({ limit: '50gb', extended: true })); // Increase URL encoded limit
+app.use(express.json({ limit: '50gb' })); 
+app.use(express.urlencoded({ limit: '50gb', extended: true })); 
+
+// Increase server timeout to 10 minutes for large uploads
+app.use((req, res, next) => {
+  req.setTimeout(600000); // 10 minutes
+  res.setTimeout(600000); // 10 minutes
+  next();
+});
 
 // Add request logging middleware
 app.use((req, res, next) => {
@@ -461,5 +468,6 @@ app.listen(PORT, () => {
   console.log(`Server ready to accept compilation requests!`);
   console.log(`Maximum file size: 10GB per file`);
   console.log(`Maximum total upload: 50GB`);
+  console.log(`Request timeout: 10 minutes`);
   console.log('======================================\n');
 });

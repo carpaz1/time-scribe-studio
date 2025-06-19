@@ -120,9 +120,9 @@ export class VideoCompilerService {
       console.log('About to send fetch request...');
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.error('Request timeout after 30 seconds');
+        console.error('Request timeout after 10 minutes');
         controller.abort();
-      }, 30000);
+      }, 600000); // 10 minutes timeout
 
       const response = await fetch('http://localhost:4000/upload', {
         method: 'POST',
