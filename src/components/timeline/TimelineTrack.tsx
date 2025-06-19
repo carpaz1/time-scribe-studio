@@ -11,6 +11,7 @@ interface TimelineTrackProps {
   onClipReorder: (clipId: string, newPosition: number) => void;
   draggedClip: VideoClip | null;
   setDraggedClip: (clip: VideoClip | null) => void;
+  scrollOffset: number;
 }
 
 const TimelineTrack: React.FC<TimelineTrackProps> = ({
@@ -21,6 +22,7 @@ const TimelineTrack: React.FC<TimelineTrackProps> = ({
   onClipReorder,
   draggedClip,
   setDraggedClip,
+  scrollOffset,
 }) => {
   const [dragOffset, setDragOffset] = useState(0);
 
@@ -29,7 +31,7 @@ const TimelineTrack: React.FC<TimelineTrackProps> = ({
   };
 
   const getClipLeft = (position: number) => {
-    return (position / totalDuration) * 100 * zoom;
+    return ((position / totalDuration) * 100 * zoom) - scrollOffset;
   };
 
   const handleDragStart = (e: React.DragEvent, clip: VideoClip) => {
@@ -50,7 +52,7 @@ const TimelineTrack: React.FC<TimelineTrackProps> = ({
 
     const track = e.currentTarget;
     const rect = track.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffset;
+    const x = e.clientX - rect.left - dragOffset + scrollOffset;
     const newPosition = Math.max(0, (x / rect.width) * (totalDuration / zoom));
     
     onClipReorder(draggedClip.id, newPosition);
@@ -74,6 +76,7 @@ const TimelineTrack: React.FC<TimelineTrackProps> = ({
           onDragStart={handleDragStart}
           onRemove={() => onClipRemove(clip.id)}
           isDragging={draggedClip?.id === clip.id}
+          zoom={zoom}
         />
       ))}
     </div>

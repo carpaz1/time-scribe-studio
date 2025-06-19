@@ -27,6 +27,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const [totalDuration, setTotalDuration] = useState(60);
   const [draggedClip, setDraggedClip] = useState<VideoClip | null>(null);
   const [isCompiling, setIsCompiling] = useState(false);
+  const [timelineScrollOffset, setTimelineScrollOffset] = useState(0);
   
   const timelineRef = useRef<HTMLDivElement>(null);
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -150,6 +151,14 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
+  const handleTimelineScroll = (e: React.WheelEvent) => {
+    if (e.shiftKey) {
+      e.preventDefault();
+      const scrollAmount = e.deltaY * 0.5;
+      setTimelineScrollOffset(prev => Math.max(0, prev + scrollAmount));
+    }
+  };
+
   const handleClipsGenerated = (generatedClips: VideoClip[]) => {
     setClips(generatedClips);
     toast({
@@ -210,25 +219,25 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     try {
       const formData = new FormData();
       
-      // Add video files with consistent naming
+      // Add clips data as JSON
+      const clipsData = timelineClips.map((clip, index) => ({
+        id: clip.id,
+        name: clip.name,
+        startTime: clip.startTime,
+        duration: clip.duration,
+        position: clip.position,
+        fileIndex: index
+      }));
+      
+      formData.append('clips', JSON.stringify(clipsData));
+      
+      // Add video files
       timelineClips.forEach((clip, index) => {
-        formData.append('videos', clip.sourceFile);
+        formData.append(`video_${index}`, clip.sourceFile);
       });
-
-      // Add config
-      const config: TimelineConfig = {
-        totalDuration,
-        clipOrder: timelineClips.map(clip => clip.id),
-        zoom,
-        playheadPosition,
-      };
-
-      const compileData: CompileRequest = { config, clips: timelineClips };
-      formData.append('config', JSON.stringify(config));
 
       console.log('Sending compilation request with', timelineClips.length, 'clips');
 
-      // Send to backend
       const response = await fetch('http://localhost:4000/upload', {
         method: 'POST',
         body: formData,
@@ -239,6 +248,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           title: "Compilation started",
           description: "Your video is being processed",
         });
+        
+        const config: TimelineConfig = {
+          totalDuration,
+          clipOrder: timelineClips.map(clip => clip.id),
+          zoom,
+          playheadPosition,
+        };
+        
+        const compileData: CompileRequest = { config, clips: timelineClips };
         onExport?.(compileData);
       } else {
         const errorText = await response.text();
@@ -380,13 +398,13 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
               Clips: {timelineClips.length} | Duration: {totalDuration.toFixed(1)}s | Zoom: {zoom.toFixed(1)}x
             </div>
             <div className="text-sm text-gray-300">
-              Playhead: {playheadPosition.toFixed(1)}s
+              Playhead: {playheadPosition.toFixed(1)}s | Hold Shift + Scroll to navigate timeline
             </div>
           </div>
 
           {/* Timeline Container */}
           <div className="flex-1 overflow-auto bg-gray-900">
-            <div className="relative">
+            <div className="relative" onWheel={handleTimelineScroll}>
               <TimelineRuler
                 totalDuration={totalDuration}
                 zoom={zoom}
@@ -406,6 +424,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
                   onClipReorder={handleClipReorder}
                   draggedClip={draggedClip}
                   setDraggedClip={setDraggedClip}
+                  scrollOffset={timelineScrollOffset}
                 />
                 
                 <Playhead
