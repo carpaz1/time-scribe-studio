@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive, X } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 
@@ -135,41 +135,38 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         </Button>
       </div>
 
-      {/* Primary Actions */}
-      <div className="flex items-center gap-2">
+      {/* COMPILE BUTTON - Made more prominent */}
+      <Button
+        onClick={onCompile}
+        disabled={isCompiling || timelineClipsLength === 0}
+        className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-10 px-6 text-base font-semibold"
+      >
+        <Upload className="w-5 h-5 mr-2" />
+        {isCompiling ? 'Compiling...' : 'Compile Video'}
+      </Button>
+
+      {/* Download Compiled Video Button */}
+      {lastCompilationResult?.downloadUrl && (
         <Button
-          onClick={onCompile}
-          disabled={isCompiling || timelineClipsLength === 0}
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9 px-4"
+          onClick={handleDownload}
+          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-10 px-6 text-base font-semibold"
         >
-          <Upload className="w-4 h-4" />
-          <span className="ml-2">
-            {isCompiling ? 'Compiling...' : 'Compile Video'}
-          </span>
+          <ExternalLink className="w-5 h-5 mr-2" />
+          Download Video
         </Button>
-        
-        {lastCompilationResult?.downloadUrl && (
-          <Button
-            onClick={handleDownload}
-            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9 px-4"
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span className="ml-2">Download Video</span>
-          </Button>
-        )}
-      </div>
+      )}
 
       {/* Progress Indicator */}
       {isCompiling && (
-        <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[200px]">
+        <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[250px]">
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-slate-300">Compiling Video</span>
-              <span className="text-xs text-slate-300">{Math.round(compilationProgress)}%</span>
+              <span className="text-sm text-slate-300 font-medium">Compiling Video</span>
+              <span className="text-sm text-slate-300 font-semibold">{Math.round(compilationProgress)}%</span>
             </div>
             <Progress 
               value={compilationProgress} 
-              className="h-2 bg-slate-600"
+              className="h-3 bg-slate-600"
             />
             <div className="text-xs text-slate-400 mt-1">
               Using NVENC GPU acceleration
