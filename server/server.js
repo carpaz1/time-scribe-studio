@@ -46,15 +46,15 @@ const upload = multer({ storage });
 // Progress endpoint
 app.get('/progress/:jobId', (req, res) => {
   const jobId = req.params.jobId;
-  console.log(`Progress request for job: ${jobId}`);
+  console.log(`[PROGRESS] Request for job: ${jobId}`);
   
   const progress = compilationProgress.get(jobId);
   if (!progress) {
-    console.log(`No progress found for job: ${jobId}`);
+    console.log(`[PROGRESS] No progress found for job: ${jobId}, returning default`);
     return res.json({ percent: 0, stage: 'Starting...' });
   }
   
-  console.log(`Returning progress for job ${jobId}:`, progress);
+  console.log(`[PROGRESS] Returning for job ${jobId}:`, progress);
   res.json(progress);
 });
 
@@ -63,41 +63,57 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
   const jobId = Date.now().toString();
   
   try {
-    console.log('=== NEW COMPILATION REQUEST ===');
-    console.log('Job ID:', jobId);
-    console.log('Files received:', req.files?.length || 0);
+    console.log('\n=== NEW COMPILATION REQUEST ===');
+    console.log('[UPLOAD] Job ID:', jobId);
+    console.log('[UPLOAD] Files received:', req.files?.length || 0);
+    console.log('[UPLOAD] Request body keys:', Object.keys(req.body));
 
-    // Initialize progress immediately
-    compilationProgress.set(jobId, { percent: 5, stage: 'Processing files...' });
-    console.log('Initial progress set for job:', jobId);
+    // Initialize progress immediately and log it
+    const initialProgress = { percent: 2, stage: 'Processing upload...' };
+    compilationProgress.set(jobId, initialProgress);
+    console.log('[UPLOAD] Initial progress set for job:', jobId, initialProgress);
 
     if (!req.files || req.files.length === 0) {
+      console.error('[UPLOAD] No files received!');
       return res.status(400).json({ error: 'No video files uploaded' });
     }
 
+    // Log file details
+    req.files.forEach((file, index) => {
+      console.log(`[UPLOAD] File ${index + 1}: ${file.originalname} (${file.size} bytes) -> ${file.path}`);
+    });
+
     const clipsData = JSON.parse(req.body.clipsData || '[]');
-    console.log('Clips data parsed:', clipsData.length, 'clips');
+    console.log('[UPLOAD] Clips data parsed:', clipsData.length, 'clips');
+    console.log('[UPLOAD] Clips details:', clipsData.map(c => ({ id: c.id, name: c.name, fileIndex: c.fileIndex })));
     
     if (clipsData.length === 0) {
+      console.error('[UPLOAD] No clips data provided!');
       return res.status(400).json({ error: 'No clips data provided' });
     }
 
+    // Update progress before sending response
+    compilationProgress.set(jobId, { percent: 5, stage: 'Upload complete, starting processing...' });
+    console.log('[UPLOAD] Progress updated to 5% for job:', jobId);
+
     // Send immediate response with jobId
-    res.json({ 
+    const response = { 
       success: true,
       message: 'Compilation started',
       jobId: jobId
-    });
-    console.log('Response sent to client with jobId:', jobId);
+    };
+    res.json(response);
+    console.log('[UPLOAD] Response sent to client:', response);
 
-    // Continue processing asynchronously - FIXED: Properly await this
+    // Continue processing asynchronously with enhanced error handling
+    console.log('[UPLOAD] Starting async processing for job:', jobId);
     processVideoCompilation(jobId, req.files, clipsData).catch(error => {
-      console.error('Async processing failed for job:', jobId, error);
+      console.error('[ERROR] Async processing failed for job:', jobId, error);
       compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
     });
 
   } catch (error) {
-    console.error('Upload endpoint error:', error);
+    console.error('[ERROR] Upload endpoint error:', error);
     compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
     if (!res.headersSent) {
       res.status(500).json({ error: 'Server error: ' + error.message });
@@ -107,27 +123,35 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
 
 async function processVideoCompilation(jobId, files, clipsData) {
   try {
-    console.log(`Starting async processing for job: ${jobId}`);
+    console.log(`\n[PROCESS] Starting async processing for job: ${jobId}`);
     
     compilationProgress.set(jobId, { percent: 10, stage: 'Preparing clips...' });
+    console.log(`[PROCESS] Progress set to 10% for job: ${jobId}`);
 
     // Generate output filename
     const outputFilename = `compiled-${Date.now()}.mp4`;
     const outputPath = path.join(outputDir, outputFilename);
+    console.log(`[PROCESS] Output will be saved to: ${outputPath}`);
 
     // Sort clips by position for proper timeline order
     const sortedClips = clipsData.sort((a, b) => a.position - b.position);
+    console.log(`[PROCESS] Clips sorted by position for job: ${jobId}`);
 
     // Filter valid clips
     const validClips = sortedClips.filter(clip => files[clip.fileIndex]);
+    console.log(`[PROCESS] Valid clips found: ${validClips.length}/${sortedClips.length} for job: ${jobId}`);
+    
     if (validClips.length === 0) {
-      compilationProgress.set(jobId, { percent: 0, stage: 'Error: No valid clips to process' });
+      const errorMsg = 'No valid clips to process';
+      console.error(`[ERROR] ${errorMsg} for job: ${jobId}`);
+      compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + errorMsg });
       return;
     }
 
-    console.log('Starting FFmpeg processing with', validClips.length, 'clips...');
+    console.log(`[PROCESS] Starting FFmpeg processing for job: ${jobId} with ${validClips.length} clips`);
 
     compilationProgress.set(jobId, { percent: 15, stage: 'Starting GPU encoding...' });
+    console.log(`[PROCESS] Progress set to 15% for job: ${jobId}`);
 
     // Optimized video settings
     const videoSettings = {
@@ -153,42 +177,47 @@ async function processVideoCompilation(jobId, files, clipsData) {
 
     // Process based on clip count
     if (validClips.length === 1) {
+      console.log(`[PROCESS] Processing single clip for job: ${jobId}`);
       await processSingleClip(jobId, validClips[0], files, outputPath, videoSettings, nvencOptions);
     } else {
+      console.log(`[PROCESS] Processing multiple clips for job: ${jobId}`);
       await processMultipleClips(jobId, validClips, files, outputPath, videoSettings, nvencOptions);
     }
 
     // Mark as complete
-    compilationProgress.set(jobId, { 
+    const finalProgress = { 
       percent: 100, 
       stage: 'Complete!',
       downloadUrl: `/download/${outputFilename}`,
       outputFile: outputFilename
-    });
-
-    console.log(`Compilation completed for job: ${jobId}`);
+    };
+    compilationProgress.set(jobId, finalProgress);
+    console.log(`[SUCCESS] Compilation completed for job: ${jobId}`, finalProgress);
 
     // Clean up uploaded files
     files.forEach(file => {
       if (fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
+        console.log(`[CLEANUP] Deleted uploaded file: ${file.path}`);
       }
     });
 
     // Clean up progress after 5 minutes
     setTimeout(() => {
       compilationProgress.delete(jobId);
-      console.log(`Progress data cleaned up for job: ${jobId}`);
+      console.log(`[CLEANUP] Progress data cleaned up for job: ${jobId}`);
     }, 300000);
 
   } catch (error) {
-    console.error(`Processing error for job ${jobId}:`, error);
+    console.error(`[ERROR] Processing error for job ${jobId}:`, error);
+    console.error(`[ERROR] Stack trace:`, error.stack);
     compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
     
     // Clean up uploaded files
     files.forEach(file => {
       if (fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
+        console.log(`[CLEANUP] Deleted uploaded file after error: ${file.path}`);
       }
     });
   }
@@ -196,7 +225,7 @@ async function processVideoCompilation(jobId, files, clipsData) {
 
 function processSingleClip(jobId, clip, files, outputPath, videoSettings, nvencOptions) {
   return new Promise((resolve, reject) => {
-    console.log(`Processing single clip for job: ${jobId}`);
+    console.log(`[SINGLE] Processing single clip for job: ${jobId}`);
     compilationProgress.set(jobId, { percent: 20, stage: 'Encoding single clip...' });
     
     const file = files[clip.fileIndex];
@@ -213,7 +242,7 @@ function processSingleClip(jobId, clip, files, outputPath, videoSettings, nvencO
       .outputOptions(nvencOptions)
       .output(outputPath)
       .on('start', (commandLine) => {
-        console.log(`FFmpeg started for job ${jobId}:`, commandLine);
+        console.log(`[SINGLE] FFmpeg started for job ${jobId}:`, commandLine);
         compilationProgress.set(jobId, { percent: 25, stage: 'GPU encoding in progress...' });
       })
       .on('progress', (progress) => {
@@ -222,14 +251,14 @@ function processSingleClip(jobId, clip, files, outputPath, videoSettings, nvencO
           percent: percent, 
           stage: `Encoding: ${Math.round(progress.percent || 0)}%` 
         });
-        console.log(`Job ${jobId} progress:`, percent + '%');
+        console.log(`[SINGLE] Job ${jobId} progress:`, percent + '%');
       })
       .on('end', () => {
-        console.log(`Video compilation completed for job: ${jobId}`);
+        console.log(`[SINGLE] Video compilation completed for job: ${jobId}`);
         resolve();
       })
       .on('error', (err) => {
-        console.error(`FFmpeg error for job ${jobId}:`, err);
+        console.error(`[SINGLE] FFmpeg error for job ${jobId}:`, err);
         reject(err);
       })
       .run();
@@ -278,7 +307,7 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
           ])
           .output(tempClipPath)
           .on('start', (commandLine) => {
-            console.log(`FFmpeg clip ${index + 1} started:`, commandLine);
+            console.log(`[MULTI] FFmpeg clip ${index + 1} started:`, commandLine);
           })
           .on('progress', (progress) => {
             const subProgress = clipProgress + ((progress.percent || 0) / 100) * (50 / validClips.length);
@@ -286,14 +315,14 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
               percent: subProgress, 
               stage: `Processing clip ${index + 1}/${validClips.length}: ${Math.round(progress.percent || 0)}%` 
             });
-            console.log(`Job ${jobId} clip ${index + 1} progress:`, Math.round(progress.percent || 0) + '%');
+            console.log(`[MULTI] Job ${jobId} clip ${index + 1} progress:`, Math.round(progress.percent || 0) + '%');
           })
           .on('end', () => {
-            console.log(`Processed clip ${index + 1}/${validClips.length} for job ${jobId}`);
+            console.log(`[MULTI] Processed clip ${index + 1}/${validClips.length} for job ${jobId}`);
             resolve();
           })
           .on('error', (err) => {
-            console.error(`Clip ${index + 1} error:`, err);
+            console.error(`[MULTI] Clip ${index + 1} error:`, err);
             reject(err);
           })
           .run();
@@ -306,13 +335,13 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
     }
 
     compilationProgress.set(jobId, { percent: 75, stage: 'Concatenating clips...' });
-    console.log(`Job ${jobId}: Starting concatenation of ${tempClips.length} clips`);
+    console.log(`[MULTI] Job ${jobId}: Starting concatenation of ${tempClips.length} clips`);
 
     // Create concat file list
     const concatListPath = path.join(tempDir, `concat_list_${jobId}.txt`);
     const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
     fs.writeFileSync(concatListPath, concatContent);
-    console.log(`Job ${jobId}: Concat list created at ${concatListPath}`);
+    console.log(`[MULTI] Job ${jobId}: Concat list created at ${concatListPath}`);
 
     // Concatenate all clips
     await new Promise((resolve, reject) => {
@@ -323,7 +352,7 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
         .outputOptions(nvencOptions)
         .output(outputPath)
         .on('start', (commandLine) => {
-          console.log(`Job ${jobId}: FFmpeg concat started:`, commandLine);
+          console.log(`[MULTI] Job ${jobId}: FFmpeg concat started:`, commandLine);
           compilationProgress.set(jobId, { percent: 80, stage: 'Final encoding...' });
         })
         .on('progress', (progress) => {
@@ -332,14 +361,14 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
             percent: percent, 
             stage: `Final encoding: ${Math.round(progress.percent || 0)}%` 
           });
-          console.log(`Job ${jobId} final encoding progress:`, Math.round(progress.percent || 0) + '%');
+          console.log(`[MULTI] Job ${jobId} final encoding progress:`, Math.round(progress.percent || 0) + '%');
         })
         .on('end', () => {
-          console.log(`Job ${jobId}: Video compilation completed!`);
+          console.log(`[MULTI] Job ${jobId}: Video compilation completed!`);
           resolve();
         })
         .on('error', (err) => {
-          console.error(`Job ${jobId}: FFmpeg concat error:`, err);
+          console.error(`[MULTI] Job ${jobId}: FFmpeg concat error:`, err);
           reject(err);
         })
         .run();
@@ -354,10 +383,10 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
     if (fs.existsSync(concatListPath)) {
       fs.unlinkSync(concatListPath);
     }
-    console.log(`Job ${jobId}: Temp files cleaned up`);
+    console.log(`[MULTI] Job ${jobId}: Temp files cleaned up`);
 
   } catch (error) {
-    console.error(`Job ${jobId}: Error processing clips:`, error);
+    console.error(`[MULTI] Job ${jobId}: Error processing clips:`, error);
     compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
     throw error;
   }
@@ -377,10 +406,16 @@ app.get('/download/:filename', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'Server is running', port: PORT });
+  console.log('[HEALTH] Health check requested');
+  res.json({ status: 'Server is running', port: PORT, timestamp: new Date().toISOString() });
 });
 
 app.listen(PORT, () => {
-  console.log(`Timeline Editor Server running on http://localhost:${PORT}`);
-  console.log('FFmpeg path:', ffmpegStatic);
+  console.log(`\n=== Timeline Editor Server Started ===`);
+  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`FFmpeg path: ${ffmpegStatic}`);
+  console.log(`Uploads directory: ${uploadsDir}`);
+  console.log(`Output directory: ${outputDir}`);
+  console.log(`Server ready to accept compilation requests!`);
+  console.log('======================================\n');
 });

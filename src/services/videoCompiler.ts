@@ -1,4 +1,3 @@
-
 import { VideoClip, TimelineConfig, CompileRequest } from '@/types/timeline';
 
 export class VideoCompilerService {
@@ -8,12 +7,30 @@ export class VideoCompilerService {
     onExport?: (data: CompileRequest) => void,
     onProgress?: (progress: number, stage: string) => void
   ): Promise<{ downloadUrl?: string; outputFile?: string }> {
+    console.log('=== COMPILATION DEBUG START ===');
     console.log('VideoCompilerService.compileTimeline started');
     console.log('Timeline clips:', timelineClips.length);
+    console.log('Server URL being used: http://localhost:4000/upload');
     
     if (timelineClips.length === 0) {
       console.error('No clips to compile');
       throw new Error('No clips to compile');
+    }
+
+    // Test server connectivity first
+    console.log('Testing server connectivity...');
+    try {
+      const healthResponse = await fetch('http://localhost:4000/health');
+      if (healthResponse.ok) {
+        const healthData = await healthResponse.json();
+        console.log('Server health check passed:', healthData);
+      } else {
+        console.error('Server health check failed:', healthResponse.status);
+        throw new Error('Backend server is not responding. Please make sure start.bat is running.');
+      }
+    } catch (connectError) {
+      console.error('Cannot connect to server:', connectError);
+      throw new Error('Cannot connect to backend server. Please make sure start.bat is running and the server is on port 4000.');
     }
 
     // Initialize progress callback immediately
@@ -42,7 +59,7 @@ export class VideoCompilerService {
     // Add unique video files
     const fileArray = Array.from(uniqueFiles.values());
     fileArray.forEach((fileData, index) => {
-      console.log(`Adding file ${index + 1}:`, fileData.file.name);
+      console.log(`Adding file ${index + 1}:`, fileData.file.name, 'Size:', fileData.file.size);
       formData.append('videos', fileData.file);
     });
 
@@ -62,27 +79,40 @@ export class VideoCompilerService {
       });
     });
     
+    console.log('Clips data prepared:', clipsData);
     formData.append('clipsData', JSON.stringify(clipsData));
 
     console.log('Sending compilation request with', timelineClips.length, 'clips and', fileArray.length, 'unique files');
 
     // Update progress before making request
     if (onProgress) {
-      onProgress(5, 'Connecting to server...');
+      onProgress(2, 'Connecting to server...');
     }
 
     try {
       console.log('Making fetch request to server...');
+      console.log('FormData contents:');
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`- ${key}: File "${value.name}" (${value.size} bytes)`);
+        } else {
+          console.log(`- ${key}:`, value);
+        }
+      }
+
       const response = await fetch('http://localhost:4000/upload', {
         method: 'POST',
         body: formData,
       });
 
-      console.log('Response received:', response.status, response.statusText);
+      console.log('Response received from server:');
+      console.log('- Status:', response.status);
+      console.log('- Status Text:', response.statusText);
+      console.log('- Headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Compilation failed:', response.status, errorText);
+        console.error('Server error response:', errorText);
         
         if (response.status === 0 || !response.status) {
           throw new Error('Cannot connect to local server. Make sure the backend is running on port 4000.');
@@ -92,12 +122,12 @@ export class VideoCompilerService {
       }
 
       const result = await response.json();
-      console.log('Server response received:', result);
+      console.log('Server response parsed:', result);
       
       // Check if server is processing (no jobId means immediate response)
       if (result.jobId && onProgress) {
         console.log('Starting progress polling for job:', result.jobId);
-        onProgress(10, 'Server processing started...');
+        onProgress(5, 'Server processing started...');
         
         // Poll for progress with improved error handling
         try {
@@ -116,6 +146,7 @@ export class VideoCompilerService {
       }
       
       console.log('Final compilation result:', result);
+      console.log('=== COMPILATION DEBUG END ===');
 
       const compileData: CompileRequest = { config, clips: timelineClips };
       onExport?.(compileData);
@@ -125,7 +156,11 @@ export class VideoCompilerService {
         outputFile: result.outputFile
       };
     } catch (error) {
-      console.error('Compilation error:', error);
+      console.error('=== COMPILATION ERROR ===');
+      console.error('Error details:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      
       if (error instanceof TypeError && error.message.includes('fetch')) {
         throw new Error('Cannot connect to local server. Please make sure the backend server is running (start.bat).');
       }
