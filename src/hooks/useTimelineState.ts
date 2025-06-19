@@ -19,6 +19,8 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     if (timelineClips.length > 0) {
       const maxEnd = Math.max(...timelineClips.map(clip => clip.position + clip.duration));
       setTotalDuration(Math.max(maxEnd + 10, 60));
+    } else {
+      setTotalDuration(60);
     }
   }, [timelineClips]);
 
@@ -52,6 +54,12 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     setPlayheadPosition(0);
     setIsPlaying(false);
     setZoom(1);
+  }, []);
+
+  const handleClearTimeline = useCallback(() => {
+    setTimelineClips([]);
+    setPlayheadPosition(0);
+    setIsPlaying(false);
   }, []);
 
   const handleRandomizeAll = useCallback(() => {
@@ -111,6 +119,7 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     handleClipRemove,
     handleClipReorder,
     handleReset,
+    handleClearTimeline,
     handleRandomizeAll,
   };
 };

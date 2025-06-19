@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import { VideoClip, CompileRequest } from '@/types/timeline';
 import { useTimelineState } from '@/hooks/useTimelineState';
@@ -49,6 +48,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     handleClipRemove,
     handleClipReorder,
     handleReset,
+    handleClearTimeline,
     handleRandomizeAll,
   } = useTimelineState(initialClips);
 
@@ -144,7 +144,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     handleReset();
     toast({
       title: "Timeline reset",
-      description: "All clips have been removed",
+      description: "All clips have been removed and settings reset",
+    });
+  };
+
+  const handleClearTimelineWithToast = () => {
+    handleClearTimeline();
+    toast({
+      title: "Timeline cleared",
+      description: "All clips have been removed from timeline",
     });
   };
 
@@ -187,19 +195,19 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   };
 
   return (
-    <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col">
+    <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-slate-800/80 backdrop-blur-sm border-b border-slate-700/50 shadow-lg">
-        <div className="flex items-center justify-between p-6">
+      <div className="bg-slate-800/80 backdrop-blur-sm border-b border-slate-700/50 shadow-lg shrink-0">
+        <div className="flex items-center justify-between p-4">
           <div className="flex items-center space-x-4">
             <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-lg">⚡</span>
             </div>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Timeline Editor
+              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Video Editor
               </h1>
-              <p className="text-slate-400 text-sm">Create amazing video compilations</p>
+              <p className="text-slate-400 text-xs">Create amazing video compilations</p>
             </div>
           </div>
           <TimelineControls
@@ -210,6 +218,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onZoomIn={handleZoomIn}
             onZoomOut={handleZoomOut}
             onReset={handleResetWithToast}
+            onClearTimeline={handleClearTimelineWithToast}
             onExportJSON={handleExportJSON}
             onCompile={handleCompile}
             lastCompilationResult={lastCompilationResult}
@@ -219,7 +228,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
       <div className="flex flex-1 overflow-hidden">
         {/* Clip Library Sidebar */}
-        <div className="w-80 bg-slate-800/60 backdrop-blur-sm border-r border-slate-700/50 flex flex-col">
+        <div className="w-80 bg-slate-800/60 backdrop-blur-sm border-r border-slate-700/50 flex flex-col shrink-0">
           <ClipLibrary
             clips={clips}
             sourceVideos={sourceVideos}
@@ -232,10 +241,10 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col overflow-hidden">
           {/* Video Player */}
-          <div className="bg-slate-800/40 backdrop-blur-sm border-b border-slate-700/50">
-            <div className="h-80 p-6">
+          <div className="bg-slate-800/40 backdrop-blur-sm border-b border-slate-700/50 shrink-0">
+            <div className="h-72 p-4">
               <div className="w-full h-full bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden shadow-xl">
                 <VideoPlayer
                   clips={timelineClips}
@@ -248,28 +257,28 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           </div>
 
           {/* Timeline Info Bar */}
-          <div className="bg-slate-800/40 backdrop-blur-sm border-b border-slate-700/50 px-6 py-4">
+          <div className="bg-slate-800/40 backdrop-blur-sm border-b border-slate-700/50 px-4 py-3 shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-4">
                 <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-sm text-slate-300">Clips: </span>
+                  <span className="text-xs text-slate-300">Clips: </span>
                   <span className="text-white font-semibold">{timelineClips.length}</span>
                 </div>
                 <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-sm text-slate-300">Duration: </span>
+                  <span className="text-xs text-slate-300">Duration: </span>
                   <span className="text-white font-semibold">{totalDuration.toFixed(1)}s</span>
                 </div>
                 <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-sm text-slate-300">Zoom: </span>
+                  <span className="text-xs text-slate-300">Zoom: </span>
                   <span className="text-white font-semibold">{zoom.toFixed(1)}x</span>
                 </div>
               </div>
               <div className="flex items-center space-x-4">
                 <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-sm text-slate-300">Playhead: </span>
+                  <span className="text-xs text-slate-300">Playhead: </span>
                   <span className="text-white font-semibold">{playheadPosition.toFixed(1)}s</span>
                 </div>
-                <div className="text-sm text-slate-400">
+                <div className="text-xs text-slate-400">
                   Hold Shift + Scroll to navigate timeline
                 </div>
               </div>
@@ -277,8 +286,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           </div>
 
           {/* Timeline Container */}
-          <div className="flex-1 overflow-auto bg-slate-900">
-            <div className="relative min-h-full" onWheel={handleTimelineScroll}>
+          <div className="flex-1 overflow-hidden bg-slate-900">
+            <div className="h-full flex flex-col" onWheel={handleTimelineScroll}>
               <TimelineRuler
                 totalDuration={totalDuration}
                 zoom={zoom}
@@ -287,7 +296,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
               
               <div
                 ref={timelineRef}
-                className="relative h-40 bg-gradient-to-r from-slate-800/60 to-slate-700/60 backdrop-blur-sm border-t border-slate-600/50 cursor-pointer shadow-inner"
+                className="flex-1 relative bg-gradient-to-r from-slate-800/60 to-slate-700/60 backdrop-blur-sm border-t border-slate-600/50 cursor-pointer shadow-inner"
                 onClick={handleTimelineClick}
               >
                 <TimelineTrack

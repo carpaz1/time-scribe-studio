@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface TimelineControlsProps {
@@ -11,6 +11,7 @@ interface TimelineControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onReset: () => void;
+  onClearTimeline: () => void;
   onExportJSON: () => void;
   onCompile: () => void;
   lastCompilationResult?: { downloadUrl?: string; outputFile?: string };
@@ -24,6 +25,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   onZoomIn,
   onZoomOut,
   onReset,
+  onClearTimeline,
   onExportJSON,
   onCompile,
   lastCompilationResult,
@@ -42,10 +44,21 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
           variant="ghost"
           size="sm"
           onClick={onTogglePlayback}
-          className="bg-slate-600/50 hover:bg-slate-500/50 text-white border-0 h-9"
+          className="bg-slate-600/50 hover:bg-slate-500/50 text-white border-0 h-9 px-4"
         >
           {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           <span className="ml-2">{isPlaying ? 'Pause' : 'Play'}</span>
+        </Button>
+        
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            if (isPlaying) onTogglePlayback();
+          }}
+          className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 w-9"
+        >
+          <Square className="w-4 h-4" />
         </Button>
       </div>
 
@@ -69,8 +82,19 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         </Button>
       </div>
 
-      {/* Action Controls */}
+      {/* Timeline Controls */}
       <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClearTimeline}
+          disabled={timelineClipsLength === 0}
+          className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span className="ml-2">Clear</span>
+        </Button>
+        
         <Button
           variant="ghost"
           size="sm"
@@ -78,7 +102,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
           className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9"
         >
           <RotateCcw className="w-4 h-4" />
-          <span className="ml-2">Reset</span>
+          <span className="ml-2">Reset All</span>
         </Button>
         
         <Button
@@ -101,7 +125,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         >
           <Upload className="w-4 h-4" />
           <span className="ml-2">
-            {isCompiling ? 'Compiling...' : 'Compile Video'}
+            {isCompiling ? 'Compiling...' : 'Export Video'}
           </span>
         </Button>
         
