@@ -27,7 +27,7 @@ const TimelineTrack: React.FC<TimelineTrackProps> = ({
   const [dragOffset, setDragOffset] = useState(0);
 
   const getClipWidth = (duration: number) => {
-    return (duration / totalDuration) * 100 * zoom;
+    return Math.max((duration / totalDuration) * 100 * zoom, 2); // Minimum 2% width
   };
 
   const getClipLeft = (position: number) => {
@@ -61,12 +61,34 @@ const TimelineTrack: React.FC<TimelineTrackProps> = ({
 
   return (
     <div
-      className="absolute inset-0 overflow-hidden bg-gray-800"
+      className="absolute inset-0 overflow-hidden"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      style={{ height: '100px' }}
       data-timeline-track
     >
+      {/* Grid lines for better visual reference */}
+      <div className="absolute inset-0 opacity-20">
+        {Array.from({ length: Math.ceil(totalDuration) }, (_, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px bg-slate-600"
+            style={{
+              left: `${((i / totalDuration) * 100 * zoom) - scrollOffset}%`,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Drop zone indicator */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        {clips.length === 0 && (
+          <div className="text-slate-500 text-lg font-medium opacity-60">
+            Drop clips here or use "Add All Random"
+          </div>
+        )}
+      </div>
+
+      {/* Clips */}
       {clips.map((clip) => (
         <ClipThumbnail
           key={clip.id}

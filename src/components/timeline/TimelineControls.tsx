@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -34,69 +35,86 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onTogglePlayback}
-        className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-      >
-        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-        <span className="ml-2">{isPlaying ? 'Pause' : 'Play'}</span>
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onZoomOut}
-        className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-      >
-        <ZoomOut className="w-4 h-4" />
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onZoomIn}
-        className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-      >
-        <ZoomIn className="w-4 h-4" />
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onReset}
-        className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-      >
-        <RotateCcw className="w-4 h-4" />
-        <span className="ml-2">Reset</span>
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onExportJSON}
-        className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-      >
-        <Download className="w-4 h-4" />
-        <span className="ml-2">Export JSON</span>
-      </Button>
-      <Button
-        onClick={onCompile}
-        disabled={isCompiling || timelineClipsLength === 0}
-        className="bg-blue-600 hover:bg-blue-700"
-      >
-        <Upload className="w-4 h-4" />
-        <span className="ml-2">
-          {isCompiling ? 'Compiling...' : 'Compile'}
-        </span>
-      </Button>
-      {lastCompilationResult?.downloadUrl && (
+    <div className="flex items-center gap-3">
+      {/* Playback Controls */}
+      <div className="flex items-center gap-2 bg-slate-700/50 rounded-lg p-1">
         <Button
-          onClick={handleDownload}
-          className="bg-green-600 hover:bg-green-700"
+          variant="ghost"
+          size="sm"
+          onClick={onTogglePlayback}
+          className="bg-slate-600/50 hover:bg-slate-500/50 text-white border-0 h-9"
         >
-          <ExternalLink className="w-4 h-4" />
-          <span className="ml-2">Download Video</span>
+          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          <span className="ml-2">{isPlaying ? 'Pause' : 'Play'}</span>
         </Button>
-      )}
+      </div>
+
+      {/* Zoom Controls */}
+      <div className="flex items-center gap-1 bg-slate-700/50 rounded-lg p-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onZoomOut}
+          className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 w-9"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onZoomIn}
+          className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 w-9"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </Button>
+      </div>
+
+      {/* Action Controls */}
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onReset}
+          className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9"
+        >
+          <RotateCcw className="w-4 h-4" />
+          <span className="ml-2">Reset</span>
+        </Button>
+        
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onExportJSON}
+          className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9"
+        >
+          <Download className="w-4 h-4" />
+          <span className="ml-2">Export JSON</span>
+        </Button>
+      </div>
+
+      {/* Primary Actions */}
+      <div className="flex items-center gap-2">
+        <Button
+          onClick={onCompile}
+          disabled={isCompiling || timelineClipsLength === 0}
+          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9"
+        >
+          <Upload className="w-4 h-4" />
+          <span className="ml-2">
+            {isCompiling ? 'Compiling...' : 'Compile Video'}
+          </span>
+        </Button>
+        
+        {lastCompilationResult?.downloadUrl && (
+          <Button
+            onClick={handleDownload}
+            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span className="ml-2">Download Video</span>
+          </Button>
+        )}
+      </div>
     </div>
   );
 };

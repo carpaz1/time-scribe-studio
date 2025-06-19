@@ -59,14 +59,28 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
       throw new Error('No clips available');
     }
 
-    const shuffledClips = [...clips].sort(() => Math.random() - 0.5);
+    // Get clips that aren't already on the timeline
+    const existingClipIds = new Set(timelineClips.map(clip => clip.id));
+    const availableClips = clips.filter(clip => !existingClipIds.has(clip.id));
+    
+    if (availableClips.length === 0) {
+      throw new Error('All clips are already on the timeline');
+    }
+
+    const shuffledClips = [...availableClips].sort(() => Math.random() - 0.5);
+    
+    // Calculate starting position (end of current timeline)
+    const currentEndPosition = timelineClips.length > 0 
+      ? Math.max(...timelineClips.map(c => c.position + c.duration))
+      : 0;
+
     const newTimelineClips = shuffledClips.map((clip, index) => ({
       ...clip,
-      position: index * clip.duration
+      position: currentEndPosition + (index > 0 ? shuffledClips.slice(0, index).reduce((acc, c) => acc + c.duration, 0) : 0)
     }));
 
-    setTimelineClips(newTimelineClips);
-  }, [clips]);
+    setTimelineClips(prev => [...prev, ...newTimelineClips]);
+  }, [clips, timelineClips]);
 
   return {
     // State
