@@ -158,6 +158,32 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
+  const handleRandomizeAll = () => {
+    if (clips.length === 0) {
+      toast({
+        title: "No clips available",
+        description: "Generate clips first before adding to timeline",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Create shuffled copy of clips
+    const shuffledClips = [...clips].sort(() => Math.random() - 0.5);
+    
+    // Add all clips to timeline with sequential positions
+    const newTimelineClips = shuffledClips.map((clip, index) => ({
+      ...clip,
+      position: index * clip.duration
+    }));
+
+    setTimelineClips(newTimelineClips);
+    toast({
+      title: "All clips added",
+      description: `${clips.length} clips added to timeline in random order`,
+    });
+  };
+
   const handleReset = () => {
     setTimelineClips([]);
     setPlayheadPosition(0);
@@ -326,6 +352,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onClipsUpdate={setClips}
             onSourceVideosUpdate={setSourceVideos}
             onClipsGenerated={handleClipsGenerated}
+            onRandomizeAll={handleRandomizeAll}
           />
         </div>
 

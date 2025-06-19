@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Plus, FileVideo } from 'lucide-react';
+import { Plus, FileVideo, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VideoClip, SourceVideo } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,7 @@ interface ClipLibraryProps {
   onClipsUpdate: (clips: VideoClip[]) => void;
   onSourceVideosUpdate: (videos: SourceVideo[]) => void;
   onClipsGenerated: (clips: VideoClip[]) => void;
+  onRandomizeAll: () => void;
 }
 
 const ClipLibrary: React.FC<ClipLibraryProps> = ({
@@ -22,6 +23,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
   onClipsUpdate,
   onSourceVideosUpdate,
   onClipsGenerated,
+  onRandomizeAll,
 }) => {
   const { toast } = useToast();
 
@@ -59,7 +61,17 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
           </div>
         ) : (
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-white">Generated Clips</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-white">Generated Clips</h3>
+              <Button
+                size="sm"
+                onClick={onRandomizeAll}
+                className="bg-purple-600 hover:bg-purple-700 text-xs px-2 py-1"
+              >
+                <Shuffle className="w-3 h-3 mr-1" />
+                Add All Random
+              </Button>
+            </div>
             {clips.map((clip) => (
               <div
                 key={clip.id}
