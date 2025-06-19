@@ -202,26 +202,29 @@ async function processVideoCompilation(jobId, files, clipsData) {
     compilationProgress.set(jobId, { percent: 15, stage: 'Starting GPU encoding...' });
     console.log(`[PROCESS] Progress set to 15% for job: ${jobId}`);
 
-    // Optimized video settings
+    // Optimized video settings for faster processing
     const videoSettings = {
       width: 1920,
       height: 1080,
       fps: 30
     };
 
-    // Optimized NVENC settings for faster encoding
+    // Ultra-fast NVENC settings optimized for speed over quality
     const nvencOptions = [
       '-c:v', 'h264_nvenc',
-      '-preset', 'p1', // Fastest preset
+      '-preset', 'p1', // Fastest preset (was p4)
       '-tune', 'hq',
       '-rc', 'vbr',
-      '-cq', '28', // Slightly higher for speed
-      '-b:v', '6M', // Lower bitrate for speed
-      '-maxrate', '8M',
-      '-bufsize', '12M',
+      '-cq', '28', // Higher CQ for speed (was 23)
+      '-b:v', '6M', // Lower bitrate for speed (was 8M)
+      '-maxrate', '8M', // Lower max rate (was 12M)
+      '-bufsize', '12M', // Smaller buffer (was 16M)
       '-gpu', 'any',
       '-movflags', '+faststart',
-      '-pix_fmt', 'yuv420p'
+      '-pix_fmt', 'yuv420p',
+      // Additional speed optimizations
+      '-threads', '0', // Use all available CPU threads
+      '-strict', '-2'
     ];
 
     // Process based on clip count
@@ -352,7 +355,8 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
             '-preset', 'p1',
             '-cq', '28',
             '-f', 'mp4',
-            '-pix_fmt', 'yuv420p'
+            '-pix_fmt', 'yuv420p',
+            '-threads', '0' // Use all CPU threads
           ])
           .output(tempClipPath)
           .on('start', (commandLine) => {

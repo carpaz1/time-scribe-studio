@@ -12,6 +12,7 @@ import TimelineRuler from './TimelineRuler';
 import ClipLibrary from './ClipLibrary';
 import VideoPlayer from './VideoPlayer';
 import TimelineControls from './TimelineControls';
+import { ZipDownloaderService } from '@/services/zipDownloader';
 
 interface TimelineEditorProps {
   initialClips?: VideoClip[];
@@ -168,48 +169,18 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
   // Enhanced download timeline clips functionality with zip
   const handleDownloadClips = async () => {
-    if (timelineClips.length === 0) {
-      toast({
-        title: "No clips to download",
-        description: "Add clips to timeline first",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
-      const zip = new JSZip();
-      
-      // Add each timeline clip to the zip
-      for (let i = 0; i < timelineClips.length; i++) {
-        const clip = timelineClips[i];
-        const fileName = `timeline_clip_${i + 1}_${clip.name}`;
-        
-        // Read the file as array buffer
-        const arrayBuffer = await clip.sourceFile.arrayBuffer();
-        zip.file(fileName, arrayBuffer);
-      }
-
-      // Generate the zip file
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      
-      // Create download link
-      const url = URL.createObjectURL(zipBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `timeline_clips_${new Date().toISOString().slice(0, 10)}.zip`;
-      link.click();
-      URL.revokeObjectURL(url);
-
+      console.log('TimelineEditor: Starting ZIP download for', timelineClips.length, 'clips');
+      await ZipDownloaderService.downloadClipsAsZip(timelineClips);
       toast({
-        title: "ZIP download started",
-        description: `Downloading ${timelineClips.length} clips as ZIP file`,
+        title: "Success",
+        description: `Downloaded ${timelineClips.length} clips as ZIP file`,
       });
     } catch (error) {
-      console.error('Error creating zip:', error);
+      console.error('ZIP download error:', error);
       toast({
-        title: "Download failed",
-        description: "There was an error creating the ZIP file",
+        title: "Download Failed",
+        description: error instanceof Error ? error.message : "Failed to create ZIP file",
         variant: "destructive",
       });
     }
