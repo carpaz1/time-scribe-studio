@@ -35,15 +35,7 @@ const Index = () => {
       {showOptimizationGuide && (
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4">
           <div className="max-w-2xl w-full max-h-[80vh] overflow-auto">
-            <GPUOptimizationGuide />
-            <div className="mt-4 text-center">
-              <Button
-                onClick={() => setShowOptimizationGuide(false)}
-                className="bg-slate-700 hover:bg-slate-600"
-              >
-                Close
-              </Button>
-            </div>
+            <GPUOptimizationGuide onClose={() => setShowOptimizationGuide(false)} />
           </div>
         </div>
       )}

@@ -1,10 +1,14 @@
 
 import React, { useState } from 'react';
-import { Zap, Cpu, HardDrive, Settings, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Zap, Cpu, HardDrive, Settings, ChevronDown, ChevronUp, ExternalLink, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-const GPUOptimizationGuide: React.FC = () => {
+interface GPUOptimizationGuideProps {
+  onClose?: () => void;
+}
+
+const GPUOptimizationGuide: React.FC<GPUOptimizationGuideProps> = ({ onClose }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -18,18 +22,30 @@ const GPUOptimizationGuide: React.FC = () => {
             <div>
               <CardTitle className="text-lg text-white">GPU Acceleration Tips</CardTitle>
               <CardDescription className="text-slate-400">
-                Optimize your RTX 4070 Ti Super for faster video processing
+                Optimize your RTX 4070 Ti Super for faster video processing (NVENC enabled)
               </CardDescription>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-slate-300 hover:text-white"
-          >
-            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="text-slate-300 hover:text-white"
+            >
+              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+            {onClose && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="text-slate-300 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       

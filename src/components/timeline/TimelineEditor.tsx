@@ -1,5 +1,5 @@
-
 import React, { useRef, useState } from 'react';
+import JSZip from 'jszip';
 import { VideoClip, CompileRequest } from '@/types/timeline';
 import { useTimelineState } from '@/hooks/useTimelineState';
 import { usePlaybackControl } from '@/hooks/usePlaybackControl';
@@ -164,8 +164,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
-  // Download timeline clips functionality
-  const handleDownloadClips = () => {
+  // Enhanced download timeline clips functionality with zip
+  const handleDownloadClips = async () => {
     if (timelineClips.length === 0) {
       toast({
         title: "No clips to download",
@@ -175,20 +175,42 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       return;
     }
 
-    // Create a zip file with all timeline clips
-    timelineClips.forEach((clip, index) => {
-      const url = URL.createObjectURL(clip.sourceFile);
+    try {
+      const zip = new JSZip();
+      
+      // Add each timeline clip to the zip
+      for (let i = 0; i < timelineClips.length; i++) {
+        const clip = timelineClips[i];
+        const fileName = `timeline_clip_${i + 1}_${clip.name}`;
+        
+        // Read the file as array buffer
+        const arrayBuffer = await clip.sourceFile.arrayBuffer();
+        zip.file(fileName, arrayBuffer);
+      }
+
+      // Generate the zip file
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      
+      // Create download link
+      const url = URL.createObjectURL(zipBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `timeline_clip_${index + 1}_${clip.name}`;
+      link.download = `timeline_clips_${new Date().toISOString().slice(0, 10)}.zip`;
       link.click();
       URL.revokeObjectURL(url);
-    });
 
-    toast({
-      title: "Downloads started",
-      description: `Downloading ${timelineClips.length} clips from timeline`,
-    });
+      toast({
+        title: "ZIP download started",
+        description: `Downloading ${timelineClips.length} clips as ZIP file`,
+      });
+    } catch (error) {
+      console.error('Error creating zip:', error);
+      toast({
+        title: "Download failed",
+        description: "There was an error creating the ZIP file",
+        variant: "destructive",
+      });
+    }
   };
 
   // Compilation

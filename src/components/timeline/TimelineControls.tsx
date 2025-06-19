@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface TimelineControlsProps {
@@ -39,7 +39,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-3 flex-wrap">
       {/* Playback Controls */}
       <div className="flex items-center gap-2 bg-slate-700/50 rounded-lg p-1">
         <Button
@@ -118,7 +118,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
           className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 px-3"
         >
           <Archive className="w-4 h-4" />
-          <span className="ml-2">Download Clips</span>
+          <span className="ml-2">Download ZIP</span>
         </Button>
         
         <Button
@@ -141,7 +141,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         >
           <Upload className="w-4 h-4" />
           <span className="ml-2">
-            {isCompiling ? 'Compiling...' : 'Export Video'}
+            {isCompiling ? 'Compiling...' : 'Compile Video'}
           </span>
         </Button>
         
