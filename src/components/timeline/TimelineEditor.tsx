@@ -210,9 +210,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     try {
       const formData = new FormData();
       
-      // Add video files
+      // Add video files with consistent naming
       timelineClips.forEach((clip, index) => {
-        formData.append(`video_${index}`, clip.sourceFile);
+        formData.append('videos', clip.sourceFile);
       });
 
       // Add config
@@ -225,6 +225,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
       const compileData: CompileRequest = { config, clips: timelineClips };
       formData.append('config', JSON.stringify(config));
+
+      console.log('Sending compilation request with', timelineClips.length, 'clips');
 
       // Send to backend
       const response = await fetch('http://localhost:4000/upload', {
@@ -239,7 +241,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         });
         onExport?.(compileData);
       } else {
-        throw new Error('Failed to compile video');
+        const errorText = await response.text();
+        console.error('Compilation failed:', response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
       }
     } catch (error) {
       console.error('Compilation error:', error);
@@ -360,7 +364,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         <div className="flex-1 flex flex-col">
           {/* Video Player */}
           <div className="bg-gray-800 border-b border-gray-700">
-            <div className="h-64">
+            <div className="h-80 p-4">
               <VideoPlayer
                 clips={timelineClips}
                 currentTime={playheadPosition}

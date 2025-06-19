@@ -108,7 +108,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   return (
-    <div className="bg-black aspect-video flex items-center justify-center">
+    <div className="w-full h-full bg-black flex items-center justify-center">
       {error ? (
         <div className="text-red-400 text-center">
           <div className="text-4xl mb-2">⚠️</div>
@@ -118,7 +118,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <video
           ref={videoRef}
           src={videoSrc}
-          className="w-full h-full object-contain"
+          className="max-w-full max-h-full object-contain"
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onError={handleError}
