@@ -1,10 +1,12 @@
 
 import React from 'react';
-import { Plus, FileVideo, Shuffle, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { VideoClip, SourceVideo } from '@/types/timeline';
-import { useToast } from '@/hooks/use-toast';
+import { Separator } from '@/components/ui/separator';
 import VideoUploader from './VideoUploader';
+import BulkDirectorySelector from './BulkDirectorySelector';
+import ClipThumbnail from './ClipThumbnail';
+import { Button } from '@/components/ui/button';
+import { Shuffle } from 'lucide-react';
 
 interface ClipLibraryProps {
   clips: VideoClip[];
@@ -25,113 +27,73 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
   onClipsGenerated,
   onRandomizeAll,
 }) => {
-  const { toast } = useToast();
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    // Handle file drops if needed
-  };
-
   return (
-    <div className="flex flex-col h-full bg-slate-800/60 backdrop-blur-sm border-r border-slate-700/50">
-      <div className="p-4 border-b border-slate-700/50 shrink-0">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-            <FileVideo className="w-4 h-4 text-white" />
+    <div className="bg-slate-800/60 backdrop-blur-sm h-full p-4 border-r border-slate-700/50 flex flex-col">
+      <div className="mb-4">
+        <div className="flex items-center space-x-3 mb-3">
+          <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-600 rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-sm">📁</span>
           </div>
-          <h2 className="text-lg font-bold text-white">Library</h2>
+          <div>
+            <h2 className="text-lg font-bold text-white">Clip Library</h2>
+            <p className="text-xs text-slate-400">Manage your video assets</p>
+          </div>
         </div>
-        
+      </div>
+
+      <div className="flex-1 overflow-auto space-y-4">
+        {/* Bulk Directory Selector */}
+        <BulkDirectorySelector
+          onSourceVideosUpdate={onSourceVideosUpdate}
+          onClipsGenerated={onClipsGenerated}
+        />
+
+        <Separator className="bg-slate-600/50" />
+
+        {/* Individual Video Uploader */}
         <VideoUploader
           sourceVideos={sourceVideos}
           onSourceVideosUpdate={onSourceVideosUpdate}
           onClipsGenerated={onClipsGenerated}
         />
-      </div>
 
-      <div
-        className="flex-1 p-4 overflow-auto"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        {clips.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="w-12 h-12 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Sparkles className="w-6 h-6 text-slate-400" />
-            </div>
-            <p className="text-slate-400 text-sm mb-1">No clips yet</p>
-            <p className="text-slate-500 text-xs">Upload videos and generate clips</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-white flex items-center space-x-2">
-                <span>Clips</span>
-                <span className="bg-slate-700 text-slate-300 text-xs px-2 py-1 rounded-full">
-                  {clips.length}
-                </span>
-              </h3>
-              <Button
-                size="sm"
-                onClick={onRandomizeAll}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 text-xs px-3 h-8"
-              >
-                <Shuffle className="w-3 h-3 mr-1" />
-                Add All
-              </Button>
-            </div>
+        {/* Generated Clips */}
+        {clips.length > 0 && (
+          <>
+            <Separator className="bg-slate-600/50" />
             
-            <div className="grid gap-2">
-              {clips.map((clip) => (
-                <div
-                  key={clip.id}
-                  className="bg-gradient-to-r from-slate-800/80 to-slate-700/80 backdrop-blur-sm rounded-lg p-3 cursor-pointer hover:from-slate-700/80 hover:to-slate-600/80 transition-all duration-300 group border border-slate-600/30 hover:border-slate-500/50 shadow-lg hover:shadow-xl"
-                  onClick={() => onClipAdd(clip)}
-                >
-                  <div className="flex items-center space-x-3">
-                    {clip.thumbnail ? (
-                      <div className="relative">
-                        <img
-                          src={clip.thumbnail}
-                          alt={clip.name}
-                          className="w-16 h-10 object-cover rounded bg-slate-600 shadow-md"
-                        />
-                        <div className="absolute inset-0 bg-black/20 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                      </div>
-                    ) : (
-                      <div className="w-16 h-10 bg-gradient-to-br from-slate-600 to-slate-700 rounded flex items-center justify-center shadow-md">
-                        <FileVideo className="w-4 h-4 text-slate-400" />
-                      </div>
-                    )}
-                    
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-white truncate mb-1">
-                        {clip.name}
-                      </p>
-                      <div className="flex items-center space-x-2 text-xs text-slate-400">
-                        <span>{clip.duration.toFixed(1)}s</span>
-                        <span>•</span>
-                        <span>@{clip.startTime.toFixed(1)}s</span>
-                      </div>
-                    </div>
-                    
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="opacity-0 group-hover:opacity-100 transition-all duration-200 bg-slate-600/50 hover:bg-slate-500/50 text-white border-0 shadow-md w-8 h-8 p-0"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </Button>
-                  </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-white">
+                  Generated Clips
+                </h3>
+                <div className="flex items-center space-x-2">
+                  <span className="bg-slate-700 text-slate-300 text-xs px-2 py-1 rounded-full">
+                    {clips.length}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={onRandomizeAll}
+                    className="text-xs hover:bg-slate-700/50 text-slate-300 hover:text-white h-7 px-2"
+                  >
+                    <Shuffle className="w-3 h-3 mr-1" />
+                    Add All
+                  </Button>
                 </div>
-              ))}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
+                {clips.map((clip) => (
+                  <ClipThumbnail
+                    key={clip.id}
+                    clip={clip}
+                    onAdd={() => onClipAdd(clip)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
