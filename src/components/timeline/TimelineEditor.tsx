@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,7 @@ import TimelineTrack from './TimelineTrack';
 import Playhead from './Playhead';
 import TimelineRuler from './TimelineRuler';
 import ClipLibrary from './ClipLibrary';
+import VideoPlayer from './VideoPlayer';
 import { useToast } from '@/hooks/use-toast';
 
 interface TimelineEditorProps {
@@ -40,16 +40,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   }, [timelineClips]);
 
-  // Play/pause functionality
-  const togglePlayback = useCallback(() => {
+  // Auto-advance playhead when playing
+  useEffect(() => {
     if (isPlaying) {
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-        playIntervalRef.current = null;
-      }
-      setIsPlaying(false);
-    } else {
-      setIsPlaying(true);
       playIntervalRef.current = setInterval(() => {
         setPlayheadPosition(prev => {
           const next = prev + 0.1;
@@ -60,8 +53,29 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           return next;
         });
       }, 100);
+    } else {
+      if (playIntervalRef.current) {
+        clearInterval(playIntervalRef.current);
+        playIntervalRef.current = null;
+      }
     }
+
+    return () => {
+      if (playIntervalRef.current) {
+        clearInterval(playIntervalRef.current);
+      }
+    };
   }, [isPlaying, totalDuration]);
+
+  // Play/pause functionality
+  const togglePlayback = useCallback(() => {
+    setIsPlaying(!isPlaying);
+  }, [isPlaying]);
+
+  // Handle video player time updates
+  const handleVideoTimeUpdate = (time: number) => {
+    setPlayheadPosition(time);
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -91,15 +105,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [togglePlayback, totalDuration]);
-
-  // Cleanup intervals
-  useEffect(() => {
-    return () => {
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-      }
-    };
-  }, []);
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 10));
   const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.1));
@@ -324,8 +329,20 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           />
         </div>
 
-        {/* Timeline Area */}
+        {/* Main Content Area */}
         <div className="flex-1 flex flex-col">
+          {/* Video Player */}
+          <div className="bg-gray-800 border-b border-gray-700">
+            <div className="h-64">
+              <VideoPlayer
+                clips={timelineClips}
+                currentTime={playheadPosition}
+                isPlaying={isPlaying}
+                onTimeUpdate={handleVideoTimeUpdate}
+              />
+            </div>
+          </div>
+
           {/* Timeline Info */}
           <div className="bg-gray-800 border-b border-gray-700 p-2 flex items-center justify-between">
             <div className="text-sm text-gray-300">
