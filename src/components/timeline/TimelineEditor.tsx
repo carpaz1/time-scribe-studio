@@ -25,6 +25,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const timelineRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [lastCompilationResult, setLastCompilationResult] = useState<{ downloadUrl?: string; outputFile?: string }>();
+  const [compilationProgress, setCompilationProgress] = useState(0);
 
   // State management
   const {
@@ -217,6 +218,20 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const handleCompile = async () => {
     try {
       setIsCompiling(true);
+      setCompilationProgress(0);
+      
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setCompilationProgress(prev => {
+          if (prev >= 95) {
+            clearInterval(progressInterval);
+            return 95; // Keep at 95% until actual completion
+          }
+          // Simulate faster progress with NVENC
+          return prev + Math.random() * 15;
+        });
+      }, 500);
+
       const config = {
         totalDuration,
         clipOrder: timelineClips.map(clip => clip.id),
@@ -225,6 +240,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       };
       
       const result = await VideoCompilerService.compileTimeline(timelineClips, config, onExport);
+      
+      clearInterval(progressInterval);
+      setCompilationProgress(100);
       setLastCompilationResult(result);
       
       toast({
@@ -240,6 +258,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       });
     } finally {
       setIsCompiling(false);
+      setCompilationProgress(0);
     }
   };
 
@@ -270,6 +289,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           <TimelineControls
             isPlaying={isPlaying}
             isCompiling={isCompiling}
+            compilationProgress={compilationProgress}
             timelineClipsLength={timelineClips.length}
             onTogglePlayback={togglePlayback}
             onZoomIn={handleZoomIn}

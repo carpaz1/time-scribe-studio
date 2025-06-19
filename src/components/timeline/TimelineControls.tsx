@@ -2,10 +2,12 @@
 import React from 'react';
 import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 
 interface TimelineControlsProps {
   isPlaying: boolean;
   isCompiling: boolean;
+  compilationProgress?: number;
   timelineClipsLength: number;
   onTogglePlayback: () => void;
   onZoomIn: () => void;
@@ -21,6 +23,7 @@ interface TimelineControlsProps {
 const TimelineControls: React.FC<TimelineControlsProps> = ({
   isPlaying,
   isCompiling,
+  compilationProgress = 0,
   timelineClipsLength,
   onTogglePlayback,
   onZoomIn,
@@ -155,6 +158,25 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
           </Button>
         )}
       </div>
+
+      {/* Progress Indicator */}
+      {isCompiling && (
+        <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[200px]">
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-slate-300">Compiling Video</span>
+              <span className="text-xs text-slate-300">{Math.round(compilationProgress)}%</span>
+            </div>
+            <Progress 
+              value={compilationProgress} 
+              className="h-2 bg-slate-600"
+            />
+            <div className="text-xs text-slate-400 mt-1">
+              Using NVENC GPU acceleration
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
