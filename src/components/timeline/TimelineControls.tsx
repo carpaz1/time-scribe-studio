@@ -8,6 +8,7 @@ interface TimelineControlsProps {
   isPlaying: boolean;
   isCompiling: boolean;
   compilationProgress?: number;
+  compilationStage?: string;
   timelineClipsLength: number;
   onTogglePlayback: () => void;
   onZoomIn: () => void;
@@ -24,6 +25,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   isPlaying,
   isCompiling,
   compilationProgress = 0,
+  compilationStage = '',
   timelineClipsLength,
   onTogglePlayback,
   onZoomIn,
@@ -156,12 +158,14 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         </Button>
       )}
 
-      {/* Progress Indicator */}
+      {/* Enhanced Progress Indicator */}
       {isCompiling && (
-        <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[250px]">
+        <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[300px]">
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-slate-300 font-medium">Compiling Video</span>
+              <span className="text-sm text-slate-300 font-medium">
+                {compilationStage || 'Processing...'}
+              </span>
               <span className="text-sm text-slate-300 font-semibold">{Math.round(compilationProgress)}%</span>
             </div>
             <Progress 
@@ -169,7 +173,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
               className="h-3 bg-slate-600"
             />
             <div className="text-xs text-slate-400 mt-1">
-              Using NVENC GPU acceleration
+              Optimized GPU acceleration • Real-time progress
             </div>
           </div>
         </div>

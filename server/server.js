@@ -1,3 +1,4 @@
+
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -11,6 +12,9 @@ ffmpeg.setFfmpegPath(ffmpegStatic);
 
 const app = express();
 const PORT = 4000;
+
+// Store active compilation progress
+const compilationProgress = new Map();
 
 // Middleware
 app.use(cors());
@@ -40,12 +44,22 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Progress endpoint
+app.get('/progress/:jobId', (req, res) => {
+  const jobId = req.params.jobId;
+  const progress = compilationProgress.get(jobId) || { percent: 0, stage: 'Starting...' };
+  res.json(progress);
+});
+
 // Upload and compile endpoint
 app.post('/upload', upload.array('videos'), async (req, res) => {
+  const jobId = Date.now().toString();
+  
   try {
-    console.log('Received compilation request');
+    console.log('Received compilation request - Job ID:', jobId);
     console.log('Files:', req.files?.length || 0);
-    console.log('Clips data:', req.body.clipsData);
+
+    compilationProgress.set(jobId, { percent: 5, stage: 'Processing files...' });
 
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No video files uploaded' });
@@ -56,6 +70,8 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
     if (clipsData.length === 0) {
       return res.status(400).json({ error: 'No clips data provided' });
     }
+
+    compilationProgress.set(jobId, { percent: 10, stage: 'Preparing clips...' });
 
     // Generate output filename
     const outputFilename = `compiled-${Date.now()}.mp4`;
@@ -70,28 +86,36 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
       return res.status(400).json({ error: 'No valid clips to process' });
     }
 
-    console.log('Starting FFmpeg processing with NVENC encoding and', validClips.length, 'clips...');
+    console.log('Starting optimized FFmpeg processing with', validClips.length, 'clips...');
 
-    // Enhanced video settings with NVENC for RTX 4070 Ti Super
+    compilationProgress.set(jobId, { percent: 15, stage: 'Starting GPU encoding...' });
+
+    // Optimized video settings
     const videoSettings = {
       width: 1920,
       height: 1080,
       fps: 30
     };
 
-    // NVENC encoding options for RTX 4070 Ti Super
+    // Optimized NVENC settings for faster encoding
     const nvencOptions = [
       '-c:v', 'h264_nvenc',
-      '-preset', 'fast',
-      '-cq', '23',
+      '-preset', 'p4', // Fastest preset for RTX cards
+      '-tune', 'hq',
       '-rc', 'vbr',
+      '-cq', '25', // Slightly higher for speed
+      '-b:v', '8M',
+      '-maxrate', '12M',
+      '-bufsize', '16M',
       '-gpu', 'any',
       '-movflags', '+faststart',
       '-pix_fmt', 'yuv420p'
     ];
 
-    // If only one clip, use simpler approach with NVENC
+    // If only one clip, use simpler approach
     if (validClips.length === 1) {
+      compilationProgress.set(jobId, { percent: 20, stage: 'Encoding single clip...' });
+      
       const clip = validClips[0];
       const file = req.files[clip.fileIndex];
       
@@ -99,6 +123,7 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
         .seekInput(clip.startTime)
         .duration(clip.duration)
         .audioCodec('aac')
+        .audioBitrate('128k')
         .size(`${videoSettings.width}x${videoSettings.height}`)
         .fps(videoSettings.fps)
         .aspect('16:9')
@@ -106,28 +131,42 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
         .outputOptions(nvencOptions)
         .output(outputPath)
         .on('start', (commandLine) => {
-          console.log('FFmpeg started with NVENC:', commandLine);
+          console.log('FFmpeg started:', commandLine);
+          compilationProgress.set(jobId, { percent: 25, stage: 'GPU encoding in progress...' });
         })
         .on('progress', (progress) => {
-          console.log('Processing: ' + (progress.percent || 0) + '% done');
+          const percent = Math.min(95, 25 + (progress.percent || 0) * 0.7);
+          compilationProgress.set(jobId, { 
+            percent: percent, 
+            stage: `Encoding: ${Math.round(progress.percent || 0)}%` 
+          });
+          console.log('Progress:', percent + '%');
         })
         .on('end', () => {
-          console.log('Video compilation completed with NVENC GPU acceleration!');
+          console.log('Video compilation completed!');
+          compilationProgress.set(jobId, { percent: 100, stage: 'Complete!' });
           
           // Clean up uploaded files
           req.files.forEach(file => {
             fs.unlinkSync(file.path);
           });
 
+          // Clean up progress after 5 minutes
+          setTimeout(() => {
+            compilationProgress.delete(jobId);
+          }, 300000);
+
           res.json({ 
             success: true, 
-            message: 'Video compiled successfully with GPU acceleration',
+            message: 'Video compiled successfully',
             outputFile: outputFilename,
-            downloadUrl: `/download/${outputFilename}`
+            downloadUrl: `/download/${outputFilename}`,
+            jobId: jobId
           });
         })
         .on('error', (err) => {
-          console.error('FFmpeg NVENC error:', err);
+          console.error('FFmpeg error:', err);
+          compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + err.message });
           
           // Clean up uploaded files
           req.files.forEach(file => {
@@ -140,13 +179,14 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
         })
         .run();
     } else {
-      // Multiple clips - use concat protocol with NVENC
+      // Multiple clips - optimized concat approach
+      compilationProgress.set(jobId, { percent: 20, stage: 'Processing multiple clips...' });
+      
       const tempDir = path.join(__dirname, 'temp');
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      // Create temporary processed clips with uniform dimensions and NVENC
       const tempClips = [];
       let processedCount = 0;
 
@@ -156,25 +196,39 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
           const tempClipPath = path.join(tempDir, `temp_clip_${index}.mp4`);
           tempClips.push(tempClipPath);
 
+          const clipProgress = 20 + (index / validClips.length) * 50;
+          compilationProgress.set(jobId, { 
+            percent: clipProgress, 
+            stage: `Processing clip ${index + 1}/${validClips.length}...` 
+          });
+
           ffmpeg(file.path)
             .seekInput(clip.startTime)
             .duration(clip.duration)
             .audioCodec('aac')
+            .audioBitrate('128k')
             .size(`${videoSettings.width}x${videoSettings.height}`)
             .fps(videoSettings.fps)
             .aspect('16:9')
             .autopad(true, 'black')
             .outputOptions([
               '-c:v', 'h264_nvenc',
-              '-preset', 'fast',
-              '-cq', '23',
+              '-preset', 'p4',
+              '-cq', '25',
               '-f', 'mp4',
               '-pix_fmt', 'yuv420p'
             ])
             .output(tempClipPath)
+            .on('progress', (progress) => {
+              const subProgress = clipProgress + ((progress.percent || 0) / 100) * (50 / validClips.length);
+              compilationProgress.set(jobId, { 
+                percent: subProgress, 
+                stage: `Processing clip ${index + 1}/${validClips.length}: ${Math.round(progress.percent || 0)}%` 
+              });
+            })
             .on('end', () => {
               processedCount++;
-              console.log(`Processed clip ${processedCount}/${validClips.length} with NVENC`);
+              console.log(`Processed clip ${processedCount}/${validClips.length}`);
               resolve();
             })
             .on('error', reject)
@@ -182,18 +236,20 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
         });
       };
 
-      // Process all clips sequentially with NVENC
       try {
+        // Process all clips sequentially for better progress tracking
         for (let i = 0; i < validClips.length; i++) {
           await processClip(validClips[i], i);
         }
+
+        compilationProgress.set(jobId, { percent: 75, stage: 'Concatenating clips...' });
 
         // Create concat file list
         const concatListPath = path.join(tempDir, 'concat_list.txt');
         const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
         fs.writeFileSync(concatListPath, concatContent);
 
-        // Concatenate all clips with NVENC
+        // Concatenate all clips
         ffmpeg()
           .input(concatListPath)
           .inputOptions(['-f', 'concat', '-safe', '0'])
@@ -201,13 +257,19 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
           .outputOptions(nvencOptions)
           .output(outputPath)
           .on('start', (commandLine) => {
-            console.log('FFmpeg concat started with NVENC:', commandLine);
+            console.log('FFmpeg concat started:', commandLine);
+            compilationProgress.set(jobId, { percent: 80, stage: 'Final encoding...' });
           })
           .on('progress', (progress) => {
-            console.log('Concatenating with GPU: ' + (progress.percent || 0) + '% done');
+            const percent = Math.min(95, 80 + (progress.percent || 0) * 0.15);
+            compilationProgress.set(jobId, { 
+              percent: percent, 
+              stage: `Final encoding: ${Math.round(progress.percent || 0)}%` 
+            });
           })
           .on('end', () => {
-            console.log('Video compilation completed with NVENC GPU acceleration!');
+            console.log('Video compilation completed!');
+            compilationProgress.set(jobId, { percent: 100, stage: 'Complete!' });
             
             // Clean up temp files
             tempClips.forEach(tempClip => {
@@ -224,15 +286,22 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
               fs.unlinkSync(file.path);
             });
 
+            // Clean up progress after 5 minutes
+            setTimeout(() => {
+              compilationProgress.delete(jobId);
+            }, 300000);
+
             res.json({ 
               success: true, 
-              message: 'Video compiled successfully with GPU acceleration',
+              message: 'Video compiled successfully',
               outputFile: outputFilename,
-              downloadUrl: `/download/${outputFilename}`
+              downloadUrl: `/download/${outputFilename}`,
+              jobId: jobId
             });
           })
           .on('error', (err) => {
-            console.error('FFmpeg NVENC concat error:', err);
+            console.error('FFmpeg concat error:', err);
+            compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + err.message });
             
             // Clean up temp files
             tempClips.forEach(tempClip => {
@@ -257,6 +326,7 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
 
       } catch (error) {
         console.error('Error processing clips:', error);
+        compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
         
         // Clean up temp files
         tempClips.forEach(tempClip => {
@@ -278,6 +348,7 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
 
   } catch (error) {
     console.error('Server error:', error);
+    compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 });

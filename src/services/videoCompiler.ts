@@ -5,7 +5,8 @@ export class VideoCompilerService {
   static async compileTimeline(
     timelineClips: VideoClip[],
     config: TimelineConfig,
-    onExport?: (data: CompileRequest) => void
+    onExport?: (data: CompileRequest) => void,
+    onProgress?: (progress: number, stage: string) => void
   ): Promise<{ downloadUrl?: string; outputFile?: string }> {
     if (timelineClips.length === 0) {
       throw new Error('No clips to compile');
@@ -70,6 +71,12 @@ export class VideoCompilerService {
       }
 
       const result = await response.json();
+      
+      // If we have a jobId, poll for progress
+      if (result.jobId && onProgress) {
+        await this.pollProgress(result.jobId, onProgress);
+      }
+      
       console.log('Compilation result:', result);
 
       const compileData: CompileRequest = { config, clips: timelineClips };
@@ -85,6 +92,40 @@ export class VideoCompilerService {
       }
       throw error;
     }
+  }
+
+  private static async pollProgress(jobId: string, onProgress: (progress: number, stage: string) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch(`http://localhost:4000/progress/${jobId}`);
+          
+          if (!response.ok) {
+            clearInterval(pollInterval);
+            reject(new Error('Failed to get progress'));
+            return;
+          }
+
+          const progressData = await response.json();
+          onProgress(progressData.percent, progressData.stage);
+
+          // If complete or error, stop polling
+          if (progressData.percent >= 100 || progressData.stage.startsWith('Error:')) {
+            clearInterval(pollInterval);
+            resolve();
+          }
+        } catch (error) {
+          console.error('Progress polling error:', error);
+          // Continue polling on network errors
+        }
+      }, 500); // Poll every 500ms for smooth progress
+
+      // Timeout after 10 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        resolve();
+      }, 600000);
+    });
   }
 
   static exportTimelineJSON(
