@@ -15,9 +15,21 @@ const PORT = 4000;
 // Store active compilation progress
 const compilationProgress = new Map();
 
-// Middleware
+// Middleware with increased limits for large files
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50gb' })); // Increase JSON limit
+app.use(express.urlencoded({ limit: '50gb', extended: true })); // Increase URL encoded limit
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  if (req.method === 'POST' && req.url === '/upload') {
+    console.log('[REQUEST] Upload request received!');
+    console.log('[REQUEST] Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('[REQUEST] Content-Length:', req.headers['content-length']);
+  }
+  next();
+});
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -31,17 +43,28 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
-// Configure multer for file uploads
+// Configure multer for file uploads with increased limits
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    console.log('[MULTER] Receiving file:', file.originalname, 'Size:', file.size || 'unknown');
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
+    const filename = Date.now() + '-' + file.originalname;
+    console.log('[MULTER] Saving file as:', filename);
+    cb(null, filename);
   }
 });
 
-const upload = multer({ storage });
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 * 1024, // 10GB per file
+    fieldSize: 10 * 1024 * 1024 * 1024, // 10GB for form fields
+    fields: 100, // Allow many form fields
+    files: 50 // Allow up to 50 files
+  }
+});
 
 // Progress endpoint
 app.get('/progress/:jobId', (req, res) => {
@@ -58,67 +81,86 @@ app.get('/progress/:jobId', (req, res) => {
   res.json(progress);
 });
 
-// Upload and compile endpoint
-app.post('/upload', upload.array('videos'), async (req, res) => {
-  const jobId = Date.now().toString();
+// Upload and compile endpoint with enhanced error handling
+app.post('/upload', (req, res, next) => {
+  console.log('\n=== UPLOAD REQUEST RECEIVED ===');
+  console.log('[UPLOAD] Starting multer processing...');
+  console.log('[UPLOAD] Request size:', req.headers['content-length'], 'bytes');
   
-  try {
-    console.log('\n=== NEW COMPILATION REQUEST ===');
-    console.log('[UPLOAD] Job ID:', jobId);
-    console.log('[UPLOAD] Files received:', req.files?.length || 0);
-    console.log('[UPLOAD] Request body keys:', Object.keys(req.body));
-
-    // Initialize progress immediately and log it
-    const initialProgress = { percent: 2, stage: 'Processing upload...' };
-    compilationProgress.set(jobId, initialProgress);
-    console.log('[UPLOAD] Initial progress set for job:', jobId, initialProgress);
-
-    if (!req.files || req.files.length === 0) {
-      console.error('[UPLOAD] No files received!');
-      return res.status(400).json({ error: 'No video files uploaded' });
+  // Use multer with error handling
+  upload.array('videos')(req, res, async (err) => {
+    if (err) {
+      console.error('[UPLOAD] Multer error:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum size is 10GB per file.' });
+      }
+      if (err.code === 'LIMIT_FIELD_SIZE') {
+        return res.status(413).json({ error: 'Form field too large.' });
+      }
+      return res.status(400).json({ error: 'Upload error: ' + err.message });
     }
-
-    // Log file details
-    req.files.forEach((file, index) => {
-      console.log(`[UPLOAD] File ${index + 1}: ${file.originalname} (${file.size} bytes) -> ${file.path}`);
-    });
-
-    const clipsData = JSON.parse(req.body.clipsData || '[]');
-    console.log('[UPLOAD] Clips data parsed:', clipsData.length, 'clips');
-    console.log('[UPLOAD] Clips details:', clipsData.map(c => ({ id: c.id, name: c.name, fileIndex: c.fileIndex })));
     
-    if (clipsData.length === 0) {
-      console.error('[UPLOAD] No clips data provided!');
-      return res.status(400).json({ error: 'No clips data provided' });
-    }
+    // Continue with the original upload logic
+    const jobId = Date.now().toString();
+    
+    try {
+      console.log('\n=== NEW COMPILATION REQUEST ===');
+      console.log('[UPLOAD] Job ID:', jobId);
+      console.log('[UPLOAD] Files received:', req.files?.length || 0);
+      console.log('[UPLOAD] Request body keys:', Object.keys(req.body));
 
-    // Update progress before sending response
-    compilationProgress.set(jobId, { percent: 5, stage: 'Upload complete, starting processing...' });
-    console.log('[UPLOAD] Progress updated to 5% for job:', jobId);
+      // Initialize progress immediately and log it
+      const initialProgress = { percent: 2, stage: 'Processing upload...' };
+      compilationProgress.set(jobId, initialProgress);
+      console.log('[UPLOAD] Initial progress set for job:', jobId, initialProgress);
 
-    // Send immediate response with jobId
-    const response = { 
-      success: true,
-      message: 'Compilation started',
-      jobId: jobId
-    };
-    res.json(response);
-    console.log('[UPLOAD] Response sent to client:', response);
+      if (!req.files || req.files.length === 0) {
+        console.error('[UPLOAD] No files received!');
+        return res.status(400).json({ error: 'No video files uploaded' });
+      }
 
-    // Continue processing asynchronously with enhanced error handling
-    console.log('[UPLOAD] Starting async processing for job:', jobId);
-    processVideoCompilation(jobId, req.files, clipsData).catch(error => {
-      console.error('[ERROR] Async processing failed for job:', jobId, error);
+      // Log file details
+      req.files.forEach((file, index) => {
+        console.log(`[UPLOAD] File ${index + 1}: ${file.originalname} (${file.size} bytes) -> ${file.path}`);
+      });
+
+      const clipsData = JSON.parse(req.body.clipsData || '[]');
+      console.log('[UPLOAD] Clips data parsed:', clipsData.length, 'clips');
+      console.log('[UPLOAD] Clips details:', clipsData.map(c => ({ id: c.id, name: c.name, fileIndex: c.fileIndex })));
+      
+      if (clipsData.length === 0) {
+        console.error('[UPLOAD] No clips data provided!');
+        return res.status(400).json({ error: 'No clips data provided' });
+      }
+
+      // Update progress before sending response
+      compilationProgress.set(jobId, { percent: 5, stage: 'Upload complete, starting processing...' });
+      console.log('[UPLOAD] Progress updated to 5% for job:', jobId);
+
+      // Send immediate response with jobId
+      const response = { 
+        success: true,
+        message: 'Compilation started',
+        jobId: jobId
+      };
+      res.json(response);
+      console.log('[UPLOAD] Response sent to client:', response);
+
+      // Continue processing asynchronously with enhanced error handling
+      console.log('[UPLOAD] Starting async processing for job:', jobId);
+      processVideoCompilation(jobId, req.files, clipsData).catch(error => {
+        console.error('[ERROR] Async processing failed for job:', jobId, error);
+        compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
+      });
+
+    } catch (error) {
+      console.error('[ERROR] Upload endpoint error:', error);
       compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
-    });
-
-  } catch (error) {
-    console.error('[ERROR] Upload endpoint error:', error);
-    compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Server error: ' + error.message });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Server error: ' + error.message });
+      }
     }
-  }
+  });
 });
 
 async function processVideoCompilation(jobId, files, clipsData) {
@@ -417,5 +459,7 @@ app.listen(PORT, () => {
   console.log(`Uploads directory: ${uploadsDir}`);
   console.log(`Output directory: ${outputDir}`);
   console.log(`Server ready to accept compilation requests!`);
+  console.log(`Maximum file size: 10GB per file`);
+  console.log(`Maximum total upload: 50GB`);
   console.log('======================================\n');
 });
