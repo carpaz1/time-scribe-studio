@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface TimelineControlsProps {
@@ -13,6 +12,7 @@ interface TimelineControlsProps {
   onReset: () => void;
   onExportJSON: () => void;
   onCompile: () => void;
+  lastCompilationResult?: { downloadUrl?: string; outputFile?: string };
 }
 
 const TimelineControls: React.FC<TimelineControlsProps> = ({
@@ -25,7 +25,14 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   onReset,
   onExportJSON,
   onCompile,
+  lastCompilationResult,
 }) => {
+  const handleDownload = () => {
+    if (lastCompilationResult?.downloadUrl) {
+      window.open(`http://localhost:4000${lastCompilationResult.downloadUrl}`, '_blank');
+    }
+  };
+
   return (
     <div className="flex items-center gap-2">
       <Button
@@ -81,6 +88,15 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
           {isCompiling ? 'Compiling...' : 'Compile'}
         </span>
       </Button>
+      {lastCompilationResult?.downloadUrl && (
+        <Button
+          onClick={handleDownload}
+          className="bg-green-600 hover:bg-green-700"
+        >
+          <ExternalLink className="w-4 h-4" />
+          <span className="ml-2">Download Video</span>
+        </Button>
+      )}
     </div>
   );
 };

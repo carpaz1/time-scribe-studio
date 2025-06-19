@@ -6,7 +6,7 @@ export class VideoCompilerService {
     timelineClips: VideoClip[],
     config: TimelineConfig,
     onExport?: (data: CompileRequest) => void
-  ): Promise<void> {
+  ): Promise<{ downloadUrl?: string; outputFile?: string }> {
     if (timelineClips.length === 0) {
       throw new Error('No clips to compile');
     }
@@ -52,19 +52,39 @@ export class VideoCompilerService {
 
     console.log('Sending compilation request with', timelineClips.length, 'clips and', fileArray.length, 'unique files');
 
-    const response = await fetch('http://localhost:4000/upload', {
-      method: 'POST',
-      body: formData,
-    });
+    try {
+      const response = await fetch('http://localhost:4000/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Compilation failed:', response.status, errorText);
-      throw new Error(`Server error: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Compilation failed:', response.status, errorText);
+        
+        if (response.status === 0 || !response.status) {
+          throw new Error('Cannot connect to local server. Make sure the backend is running on port 4000.');
+        }
+        
+        throw new Error(`Server error: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('Compilation result:', result);
+
+      const compileData: CompileRequest = { config, clips: timelineClips };
+      onExport?.(compileData);
+
+      return {
+        downloadUrl: result.downloadUrl,
+        outputFile: result.outputFile
+      };
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Cannot connect to local server. Please make sure the backend server is running (start.bat).');
+      }
+      throw error;
     }
-
-    const compileData: CompileRequest = { config, clips: timelineClips };
-    onExport?.(compileData);
   }
 
   static exportTimelineJSON(

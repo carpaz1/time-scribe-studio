@@ -1,5 +1,4 @@
-
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { VideoClip, CompileRequest } from '@/types/timeline';
 import { useTimelineState } from '@/hooks/useTimelineState';
 import { usePlaybackControl } from '@/hooks/usePlaybackControl';
@@ -23,6 +22,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
 }) => {
   const timelineRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const [lastCompilationResult, setLastCompilationResult] = useState<{ downloadUrl?: string; outputFile?: string }>();
 
   // State management
   const {
@@ -146,11 +146,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         playheadPosition,
       };
       
-      await VideoCompilerService.compileTimeline(timelineClips, config, onExport);
+      const result = await VideoCompilerService.compileTimeline(timelineClips, config, onExport);
+      setLastCompilationResult(result);
       
       toast({
-        title: "Compilation started",
-        description: "Your video is being processed",
+        title: "Compilation completed!",
+        description: "Your video has been processed successfully. Click 'Download Video' to save it.",
       });
     } catch (error) {
       console.error('Compilation error:', error);
@@ -188,6 +189,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onReset={handleResetWithToast}
             onExportJSON={handleExportJSON}
             onCompile={handleCompile}
+            lastCompilationResult={lastCompilationResult}
           />
         </div>
       </div>
