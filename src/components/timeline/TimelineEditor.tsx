@@ -1,13 +1,16 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { VideoClip, SourceVideo, TimelineConfig, CompileRequest } from '@/types/timeline';
+
+import React, { useRef } from 'react';
+import { VideoClip, CompileRequest } from '@/types/timeline';
+import { useTimelineState } from '@/hooks/useTimelineState';
+import { usePlaybackControl } from '@/hooks/usePlaybackControl';
+import { VideoCompilerService } from '@/services/videoCompiler';
+import { useToast } from '@/hooks/use-toast';
 import TimelineTrack from './TimelineTrack';
 import Playhead from './Playhead';
 import TimelineRuler from './TimelineRuler';
 import ClipLibrary from './ClipLibrary';
 import VideoPlayer from './VideoPlayer';
-import { useToast } from '@/hooks/use-toast';
+import TimelineControls from './TimelineControls';
 
 interface TimelineEditorProps {
   initialClips?: VideoClip[];
@@ -18,137 +21,56 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   initialClips = [], 
   onExport 
 }) => {
-  const [clips, setClips] = useState<VideoClip[]>(initialClips);
-  const [sourceVideos, setSourceVideos] = useState<SourceVideo[]>([]);
-  const [timelineClips, setTimelineClips] = useState<VideoClip[]>([]);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playheadPosition, setPlayheadPosition] = useState(0);
-  const [zoom, setZoom] = useState(1);
-  const [totalDuration, setTotalDuration] = useState(60);
-  const [draggedClip, setDraggedClip] = useState<VideoClip | null>(null);
-  const [isCompiling, setIsCompiling] = useState(false);
-  const [timelineScrollOffset, setTimelineScrollOffset] = useState(0);
-  
   const timelineRef = useRef<HTMLDivElement>(null);
-  const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  // Calculate total timeline duration
-  useEffect(() => {
-    if (timelineClips.length > 0) {
-      const maxEnd = Math.max(...timelineClips.map(clip => clip.position + clip.duration));
-      setTotalDuration(Math.max(maxEnd + 10, 60));
-    }
-  }, [timelineClips]);
+  // State management
+  const {
+    clips,
+    sourceVideos,
+    timelineClips,
+    isPlaying,
+    playheadPosition,
+    zoom,
+    totalDuration,
+    draggedClip,
+    isCompiling,
+    timelineScrollOffset,
+    setClips,
+    setSourceVideos,
+    setIsPlaying,
+    setPlayheadPosition,
+    setZoom,
+    setDraggedClip,
+    setIsCompiling,
+    setTimelineScrollOffset,
+    handleClipAdd,
+    handleClipRemove,
+    handleClipReorder,
+    handleReset,
+    handleRandomizeAll,
+  } = useTimelineState(initialClips);
 
-  // Auto-advance playhead when playing
-  useEffect(() => {
-    if (isPlaying) {
-      playIntervalRef.current = setInterval(() => {
-        setPlayheadPosition(prev => {
-          const next = prev + 0.1;
-          if (next >= totalDuration) {
-            setIsPlaying(false);
-            return 0;
-          }
-          return next;
-        });
-      }, 100);
-    } else {
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-        playIntervalRef.current = null;
-      }
-    }
+  // Playback control
+  const { togglePlayback } = usePlaybackControl({
+    isPlaying,
+    setIsPlaying,
+    playheadPosition,
+    setPlayheadPosition,
+    totalDuration,
+  });
 
-    return () => {
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-      }
-    };
-  }, [isPlaying, totalDuration]);
-
-  // Play/pause functionality
-  const togglePlayback = useCallback(() => {
-    setIsPlaying(!isPlaying);
-  }, [isPlaying]);
-
-  // Handle video player time updates
-  const handleVideoTimeUpdate = (time: number) => {
-    setPlayheadPosition(time);
-  };
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-      
-      switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          togglePlayback();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          setPlayheadPosition(prev => Math.max(0, prev - 1));
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          setPlayheadPosition(prev => Math.min(totalDuration, prev + 1));
-          break;
-        case 'Home':
-          e.preventDefault();
-          setPlayheadPosition(0);
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [togglePlayback, totalDuration]);
-
+  // Zoom controls
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 10));
   const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.1));
 
+  // Timeline interaction
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const newPosition = (x / rect.width) * (totalDuration / zoom);
     setPlayheadPosition(Math.max(0, Math.min(totalDuration, newPosition)));
-  };
-
-  const handleClipAdd = (clip: VideoClip) => {
-    const newClip = {
-      ...clip,
-      position: timelineClips.length > 0 
-        ? Math.max(...timelineClips.map(c => c.position + c.duration)) 
-        : 0
-    };
-    setTimelineClips(prev => [...prev, newClip]);
-    toast({
-      title: "Clip added",
-      description: `${clip.name} has been added to the timeline`,
-    });
-  };
-
-  const handleClipRemove = (clipId: string) => {
-    setTimelineClips(prev => prev.filter(clip => clip.id !== clipId));
-    toast({
-      title: "Clip removed",
-      description: "Clip has been removed from timeline",
-    });
-  };
-
-  const handleClipReorder = (draggedClipId: string, targetPosition: number) => {
-    setTimelineClips(prev => {
-      const updated = prev.map(clip => 
-        clip.id === draggedClipId 
-          ? { ...clip, position: targetPosition }
-          : clip
-      );
-      return updated.sort((a, b) => a.position - b.position);
-    });
   };
 
   const handleTimelineScroll = (e: React.WheelEvent) => {
@@ -159,6 +81,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   };
 
+  // Video player events
+  const handleVideoTimeUpdate = (time: number) => {
+    setPlayheadPosition(time);
+  };
+
+  // Clip library events
   const handleClipsGenerated = (generatedClips: VideoClip[]) => {
     setClips(generatedClips);
     toast({
@@ -167,127 +95,68 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
-  const handleRandomizeAll = () => {
-    if (clips.length === 0) {
+  const handleClipAddWithToast = (clip: VideoClip) => {
+    handleClipAdd(clip);
+    toast({
+      title: "Clip added",
+      description: `${clip.name} has been added to the timeline`,
+    });
+  };
+
+  const handleClipRemoveWithToast = (clipId: string) => {
+    handleClipRemove(clipId);
+    toast({
+      title: "Clip removed",
+      description: "Clip has been removed from timeline",
+    });
+  };
+
+  const handleRandomizeAllWithToast = () => {
+    try {
+      handleRandomizeAll();
+      toast({
+        title: "All clips added",
+        description: `${clips.length} clips added to timeline in random order`,
+      });
+    } catch (error) {
       toast({
         title: "No clips available",
         description: "Generate clips first before adding to timeline",
         variant: "destructive",
       });
-      return;
     }
-
-    // Create shuffled copy of clips
-    const shuffledClips = [...clips].sort(() => Math.random() - 0.5);
-    
-    // Add all clips to timeline with sequential positions
-    const newTimelineClips = shuffledClips.map((clip, index) => ({
-      ...clip,
-      position: index * clip.duration
-    }));
-
-    setTimelineClips(newTimelineClips);
-    toast({
-      title: "All clips added",
-      description: `${clips.length} clips added to timeline in random order`,
-    });
   };
 
-  const handleReset = () => {
-    setTimelineClips([]);
-    setPlayheadPosition(0);
-    setIsPlaying(false);
-    setZoom(1);
+  const handleResetWithToast = () => {
+    handleReset();
     toast({
       title: "Timeline reset",
       description: "All clips have been removed",
     });
   };
 
+  // Compilation
   const handleCompile = async () => {
-    if (timelineClips.length === 0) {
-      toast({
-        title: "No clips to compile",
-        description: "Please add clips to the timeline first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsCompiling(true);
-    
     try {
-      const formData = new FormData();
+      setIsCompiling(true);
+      const config = {
+        totalDuration,
+        clipOrder: timelineClips.map(clip => clip.id),
+        zoom,
+        playheadPosition,
+      };
       
-      // Group clips by their source file to avoid duplicates
-      const uniqueFiles = new Map();
-      timelineClips.forEach((clip) => {
-        const fileKey = clip.sourceFile.name + clip.sourceFile.size;
-        if (!uniqueFiles.has(fileKey)) {
-          uniqueFiles.set(fileKey, {
-            file: clip.sourceFile,
-            clips: []
-          });
-        }
-        uniqueFiles.get(fileKey).clips.push(clip);
-      });
-
-      // Add unique video files
-      const fileArray = Array.from(uniqueFiles.values());
-      fileArray.forEach((fileData, index) => {
-        formData.append('videos', fileData.file);
-      });
-
-      // Create clips data with file references
-      const clipsData = [];
-      timelineClips.forEach((clip) => {
-        const fileKey = clip.sourceFile.name + clip.sourceFile.size;
-        const fileIndex = fileArray.findIndex(f => f.file.name === clip.sourceFile.name && f.file.size === clip.sourceFile.size);
-        
-        clipsData.push({
-          id: clip.id,
-          name: clip.name,
-          startTime: clip.startTime,
-          duration: clip.duration,
-          position: clip.position,
-          fileIndex: fileIndex
-        });
-      });
+      await VideoCompilerService.compileTimeline(timelineClips, config, onExport);
       
-      formData.append('clipsData', JSON.stringify(clipsData));
-
-      console.log('Sending compilation request with', timelineClips.length, 'clips and', fileArray.length, 'unique files');
-
-      const response = await fetch('http://localhost:4000/upload', {
-        method: 'POST',
-        body: formData,
+      toast({
+        title: "Compilation started",
+        description: "Your video is being processed",
       });
-
-      if (response.ok) {
-        toast({
-          title: "Compilation started",
-          description: "Your video is being processed",
-        });
-        
-        const config: TimelineConfig = {
-          totalDuration,
-          clipOrder: timelineClips.map(clip => clip.id),
-          zoom,
-          playheadPosition,
-        };
-        
-        const compileData: CompileRequest = { config, clips: timelineClips };
-        onExport?.(compileData);
-      } else {
-        const errorText = await response.text();
-        console.error('Compilation failed:', response.status, errorText);
-        throw new Error(`Server error: ${response.status}`);
-      }
     } catch (error) {
       console.error('Compilation error:', error);
       toast({
         title: "Compilation failed",
-        description: "There was an error processing your video",
+        description: error instanceof Error ? error.message : "There was an error processing your video",
         variant: "destructive",
       });
     } finally {
@@ -296,24 +165,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   };
 
   const handleExportJSON = () => {
-    const config: TimelineConfig = {
-      totalDuration,
-      clipOrder: timelineClips.map(clip => clip.id),
-      zoom,
-      playheadPosition,
-    };
-    
-    const exportData: CompileRequest = { config, clips: timelineClips };
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'timeline-config.json';
-    link.click();
-    URL.revokeObjectURL(url);
-    
+    VideoCompilerService.exportTimelineJSON(timelineClips, totalDuration, zoom, playheadPosition);
     toast({
       title: "Timeline exported",
       description: "Timeline configuration saved as JSON",
@@ -326,61 +178,17 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       <div className="bg-gray-800 border-b border-gray-700 p-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-white">Timeline Editor</h1>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={togglePlayback}
-              className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              <span className="ml-2">{isPlaying ? 'Pause' : 'Play'}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleZoomOut}
-              className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleZoomIn}
-              className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span className="ml-2">Reset</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportJSON}
-              className="bg-gray-700 border-gray-600 text-white hover:bg-gray-600"
-            >
-              <Download className="w-4 h-4" />
-              <span className="ml-2">Export JSON</span>
-            </Button>
-            <Button
-              onClick={handleCompile}
-              disabled={isCompiling || timelineClips.length === 0}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              <Upload className="w-4 h-4" />
-              <span className="ml-2">
-                {isCompiling ? 'Compiling...' : 'Compile'}
-              </span>
-            </Button>
-          </div>
+          <TimelineControls
+            isPlaying={isPlaying}
+            isCompiling={isCompiling}
+            timelineClipsLength={timelineClips.length}
+            onTogglePlayback={togglePlayback}
+            onZoomIn={handleZoomIn}
+            onZoomOut={handleZoomOut}
+            onReset={handleResetWithToast}
+            onExportJSON={handleExportJSON}
+            onCompile={handleCompile}
+          />
         </div>
       </div>
 
@@ -390,11 +198,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           <ClipLibrary
             clips={clips}
             sourceVideos={sourceVideos}
-            onClipAdd={handleClipAdd}
+            onClipAdd={handleClipAddWithToast}
             onClipsUpdate={setClips}
             onSourceVideosUpdate={setSourceVideos}
             onClipsGenerated={handleClipsGenerated}
-            onRandomizeAll={handleRandomizeAll}
+            onRandomizeAll={handleRandomizeAllWithToast}
           />
         </div>
 
@@ -440,7 +248,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
                   clips={timelineClips}
                   totalDuration={totalDuration}
                   zoom={zoom}
-                  onClipRemove={handleClipRemove}
+                  onClipRemove={handleClipRemoveWithToast}
                   onClipReorder={handleClipReorder}
                   draggedClip={draggedClip}
                   setDraggedClip={setDraggedClip}
