@@ -1,4 +1,3 @@
-
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -62,73 +61,189 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
     const outputFilename = `compiled-${Date.now()}.mp4`;
     const outputPath = path.join(outputDir, outputFilename);
 
-    // Create filter complex for video concatenation
-    let filterComplex = '';
-    let inputs = [];
-
     // Sort clips by position for proper timeline order
     const sortedClips = clipsData.sort((a, b) => a.position - b.position);
 
-    for (let i = 0; i < sortedClips.length; i++) {
-      const clip = sortedClips[i];
-      const file = req.files[clip.fileIndex];
-      
-      if (!file) {
-        console.error(`File not found for clip ${clip.id} at index ${clip.fileIndex}`);
-        continue;
-      }
-
-      inputs.push(file.path);
-      
-      // Create video segment with trim
-      filterComplex += `[${i}:v]trim=start=${clip.startTime}:duration=${clip.duration},setpts=PTS-STARTPTS[v${i}];`;
-      filterComplex += `[${i}:a]atrim=start=${clip.startTime}:duration=${clip.duration},asetpts=PTS-STARTPTS[a${i}];`;
-    }
-
-    // Concatenate all segments
+    // Filter valid clips
     const validClips = sortedClips.filter(clip => req.files[clip.fileIndex]);
     if (validClips.length === 0) {
       return res.status(400).json({ error: 'No valid clips to process' });
     }
 
-    filterComplex += validClips.map((_, i) => `[v${i}][a${i}]`).join('') + `concat=n=${validClips.length}:v=1:a=1[outv][outa]`;
+    console.log('Starting FFmpeg processing with', validClips.length, 'clips...');
 
-    console.log('Starting FFmpeg processing...');
-    
-    const ffmpegCommand = ffmpeg();
-    
-    // Add all input files
-    inputs.forEach(inputPath => {
-      ffmpegCommand.addInput(inputPath);
-    });
+    // If only one clip, use simpler approach
+    if (validClips.length === 1) {
+      const clip = validClips[0];
+      const file = req.files[clip.fileIndex];
+      
+      ffmpeg(file.path)
+        .seekInput(clip.startTime)
+        .duration(clip.duration)
+        .videoCodec('libx264')
+        .audioCodec('aac')
+        .outputOptions([
+          '-preset', 'fast',
+          '-movflags', '+faststart'
+        ])
+        .output(outputPath)
+        .on('start', (commandLine) => {
+          console.log('FFmpeg started:', commandLine);
+        })
+        .on('progress', (progress) => {
+          console.log('Processing: ' + (progress.percent || 0) + '% done');
+        })
+        .on('end', () => {
+          console.log('Video compilation completed!');
+          
+          // Clean up uploaded files
+          req.files.forEach(file => {
+            fs.unlinkSync(file.path);
+          });
 
-    ffmpegCommand
-      .complexFilter(filterComplex)
-      .outputOptions(['-map', '[outv]', '-map', '[outa]'])
-      .output(outputPath)
-      .on('start', (commandLine) => {
-        console.log('FFmpeg started:', commandLine);
-      })
-      .on('progress', (progress) => {
-        console.log('Processing: ' + progress.percent + '% done');
-      })
-      .on('end', () => {
-        console.log('Video compilation completed!');
+          res.json({ 
+            success: true, 
+            message: 'Video compiled successfully',
+            outputFile: outputFilename,
+            downloadUrl: `/download/${outputFilename}`
+          });
+        })
+        .on('error', (err) => {
+          console.error('FFmpeg error:', err);
+          
+          // Clean up uploaded files
+          req.files.forEach(file => {
+            if (fs.existsSync(file.path)) {
+              fs.unlinkSync(file.path);
+            }
+          });
+
+          res.status(500).json({ error: 'Video compilation failed: ' + err.message });
+        })
+        .run();
+    } else {
+      // Multiple clips - use concat protocol for better compatibility
+      const tempDir = path.join(__dirname, 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Create temporary processed clips
+      const tempClips = [];
+      let processedCount = 0;
+
+      const processClip = (clip, index) => {
+        return new Promise((resolve, reject) => {
+          const file = req.files[clip.fileIndex];
+          const tempClipPath = path.join(tempDir, `temp_clip_${index}.mp4`);
+          tempClips.push(tempClipPath);
+
+          ffmpeg(file.path)
+            .seekInput(clip.startTime)
+            .duration(clip.duration)
+            .videoCodec('libx264')
+            .audioCodec('aac')
+            .outputOptions([
+              '-preset', 'fast',
+              '-f', 'mp4'
+            ])
+            .output(tempClipPath)
+            .on('end', () => {
+              processedCount++;
+              console.log(`Processed clip ${processedCount}/${validClips.length}`);
+              resolve();
+            })
+            .on('error', reject)
+            .run();
+        });
+      };
+
+      // Process all clips sequentially
+      try {
+        for (let i = 0; i < validClips.length; i++) {
+          await processClip(validClips[i], i);
+        }
+
+        // Create concat file list
+        const concatListPath = path.join(tempDir, 'concat_list.txt');
+        const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
+        fs.writeFileSync(concatListPath, concatContent);
+
+        // Concatenate all clips
+        ffmpeg()
+          .input(concatListPath)
+          .inputOptions(['-f', 'concat', '-safe', '0'])
+          .videoCodec('libx264')
+          .audioCodec('aac')
+          .outputOptions([
+            '-preset', 'fast',
+            '-movflags', '+faststart'
+          ])
+          .output(outputPath)
+          .on('start', (commandLine) => {
+            console.log('FFmpeg concat started:', commandLine);
+          })
+          .on('progress', (progress) => {
+            console.log('Concatenating: ' + (progress.percent || 0) + '% done');
+          })
+          .on('end', () => {
+            console.log('Video compilation completed!');
+            
+            // Clean up temp files
+            tempClips.forEach(tempClip => {
+              if (fs.existsSync(tempClip)) {
+                fs.unlinkSync(tempClip);
+              }
+            });
+            if (fs.existsSync(concatListPath)) {
+              fs.unlinkSync(concatListPath);
+            }
+            
+            // Clean up uploaded files
+            req.files.forEach(file => {
+              fs.unlinkSync(file.path);
+            });
+
+            res.json({ 
+              success: true, 
+              message: 'Video compiled successfully',
+              outputFile: outputFilename,
+              downloadUrl: `/download/${outputFilename}`
+            });
+          })
+          .on('error', (err) => {
+            console.error('FFmpeg concat error:', err);
+            
+            // Clean up temp files
+            tempClips.forEach(tempClip => {
+              if (fs.existsSync(tempClip)) {
+                fs.unlinkSync(tempClip);
+              }
+            });
+            if (fs.existsSync(concatListPath)) {
+              fs.unlinkSync(concatListPath);
+            }
+            
+            // Clean up uploaded files
+            req.files.forEach(file => {
+              if (fs.existsSync(file.path)) {
+                fs.unlinkSync(file.path);
+              }
+            });
+
+            res.status(500).json({ error: 'Video compilation failed: ' + err.message });
+          })
+          .run();
+
+      } catch (error) {
+        console.error('Error processing clips:', error);
         
-        // Clean up uploaded files
-        req.files.forEach(file => {
-          fs.unlinkSync(file.path);
+        // Clean up temp files
+        tempClips.forEach(tempClip => {
+          if (fs.existsSync(tempClip)) {
+            fs.unlinkSync(tempClip);
+          }
         });
-
-        res.json({ 
-          success: true, 
-          message: 'Video compiled successfully',
-          outputFile: outputFilename,
-          downloadUrl: `/download/${outputFilename}`
-        });
-      })
-      .on('error', (err) => {
-        console.error('FFmpeg error:', err);
         
         // Clean up uploaded files
         req.files.forEach(file => {
@@ -137,9 +252,9 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
           }
         });
 
-        res.status(500).json({ error: 'Video compilation failed: ' + err.message });
-      })
-      .run();
+        res.status(500).json({ error: 'Video processing failed: ' + error.message });
+      }
+    }
 
   } catch (error) {
     console.error('Server error:', error);
