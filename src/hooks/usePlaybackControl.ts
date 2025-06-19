@@ -5,7 +5,7 @@ interface UsePlaybackControlProps {
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
   playheadPosition: number;
-  setPlayheadPosition: (position: number) => void;
+  setPlayheadPosition: (position: number | ((prev: number) => number)) => void;
   totalDuration: number;
 }
 
