@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface TimelineControlsProps {
@@ -14,6 +14,7 @@ interface TimelineControlsProps {
   onClearTimeline: () => void;
   onExportJSON: () => void;
   onCompile: () => void;
+  onDownloadClips: () => void;
   lastCompilationResult?: { downloadUrl?: string; outputFile?: string };
 }
 
@@ -28,6 +29,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   onClearTimeline,
   onExportJSON,
   onCompile,
+  onDownloadClips,
   lastCompilationResult,
 }) => {
   const handleDownload = () => {
@@ -37,7 +39,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-4">
       {/* Playback Controls */}
       <div className="flex items-center gap-2 bg-slate-700/50 rounded-lg p-1">
         <Button
@@ -82,14 +84,14 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         </Button>
       </div>
 
-      {/* Timeline Controls */}
-      <div className="flex items-center gap-2">
+      {/* Timeline Management */}
+      <div className="flex items-center gap-2 bg-slate-700/50 rounded-lg p-1">
         <Button
           variant="ghost"
           size="sm"
           onClick={onClearTimeline}
           disabled={timelineClipsLength === 0}
-          className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9"
+          className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 px-3"
         >
           <Trash2 className="w-4 h-4" />
           <span className="ml-2">Clear</span>
@@ -99,17 +101,31 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
           variant="ghost"
           size="sm"
           onClick={onReset}
-          className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9"
+          className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 px-3"
         >
           <RotateCcw className="w-4 h-4" />
-          <span className="ml-2">Reset All</span>
+          <span className="ml-2">Reset</span>
+        </Button>
+      </div>
+
+      {/* Download Options */}
+      <div className="flex items-center gap-2 bg-slate-700/50 rounded-lg p-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDownloadClips}
+          disabled={timelineClipsLength === 0}
+          className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 px-3"
+        >
+          <Archive className="w-4 h-4" />
+          <span className="ml-2">Download Clips</span>
         </Button>
         
         <Button
           variant="ghost"
           size="sm"
           onClick={onExportJSON}
-          className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9"
+          className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 px-3"
         >
           <Download className="w-4 h-4" />
           <span className="ml-2">Export JSON</span>
@@ -121,7 +137,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         <Button
           onClick={onCompile}
           disabled={isCompiling || timelineClipsLength === 0}
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9"
+          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9 px-4"
         >
           <Upload className="w-4 h-4" />
           <span className="ml-2">
@@ -132,7 +148,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         {lastCompilationResult?.downloadUrl && (
           <Button
             onClick={handleDownload}
-            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9"
+            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-9 px-4"
           >
             <ExternalLink className="w-4 h-4" />
             <span className="ml-2">Download Video</span>

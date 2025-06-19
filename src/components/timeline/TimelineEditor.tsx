@@ -1,9 +1,11 @@
+
 import React, { useRef, useState } from 'react';
 import { VideoClip, CompileRequest } from '@/types/timeline';
 import { useTimelineState } from '@/hooks/useTimelineState';
 import { usePlaybackControl } from '@/hooks/usePlaybackControl';
 import { VideoCompilerService } from '@/services/videoCompiler';
 import { useToast } from '@/hooks/use-toast';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import TimelineTrack from './TimelineTrack';
 import Playhead from './Playhead';
 import TimelineRuler from './TimelineRuler';
@@ -61,11 +63,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     totalDuration,
   });
 
-  // Zoom controls
+  // Enhanced zoom controls with shift+scroll
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 10));
   const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.1));
 
-  // Timeline interaction
+  // Timeline interaction with enhanced scroll support
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
@@ -77,6 +79,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const handleTimelineScroll = (e: React.WheelEvent) => {
     if (e.shiftKey) {
       e.preventDefault();
+      if (e.deltaY < 0) {
+        handleZoomIn();
+      } else {
+        handleZoomOut();
+      }
+    } else {
       const scrollAmount = e.deltaY * 0.5;
       setTimelineScrollOffset(prev => Math.max(0, prev + scrollAmount));
     }
@@ -156,6 +164,33 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
+  // Download timeline clips functionality
+  const handleDownloadClips = () => {
+    if (timelineClips.length === 0) {
+      toast({
+        title: "No clips to download",
+        description: "Add clips to timeline first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Create a zip file with all timeline clips
+    timelineClips.forEach((clip, index) => {
+      const url = URL.createObjectURL(clip.sourceFile);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `timeline_clip_${index + 1}_${clip.name}`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+
+    toast({
+      title: "Downloads started",
+      description: `Downloading ${timelineClips.length} clips from timeline`,
+    });
+  };
+
   // Compilation
   const handleCompile = async () => {
     try {
@@ -205,9 +240,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             </div>
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Video Editor
+                Video Editor Pro
               </h1>
-              <p className="text-slate-400 text-xs">Create amazing video compilations</p>
+              <p className="text-slate-400 text-xs">Professional video compilation suite</p>
             </div>
           </div>
           <TimelineControls
@@ -221,14 +256,16 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onClearTimeline={handleClearTimelineWithToast}
             onExportJSON={handleExportJSON}
             onCompile={handleCompile}
+            onDownloadClips={handleDownloadClips}
             lastCompilationResult={lastCompilationResult}
           />
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main Content with Resizable Panels */}
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Clip Library Sidebar */}
-        <div className="w-80 bg-slate-800/60 backdrop-blur-sm border-r border-slate-700/50 flex flex-col shrink-0">
+        <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
           <ClipLibrary
             clips={clips}
             sourceVideos={sourceVideos}
@@ -238,89 +275,100 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onClipsGenerated={handleClipsGenerated}
             onRandomizeAll={handleRandomizeAllWithToast}
           />
-        </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Video Player */}
-          <div className="bg-slate-800/40 backdrop-blur-sm border-b border-slate-700/50 shrink-0">
-            <div className="h-72 p-4">
-              <div className="w-full h-full bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden shadow-xl">
-                <VideoPlayer
-                  clips={timelineClips}
-                  currentTime={playheadPosition}
-                  isPlaying={isPlaying}
-                  onTimeUpdate={handleVideoTimeUpdate}
-                />
+        <ResizablePanel defaultSize={75}>
+          <ResizablePanelGroup direction="vertical">
+            {/* Video Player */}
+            <ResizablePanel defaultSize={60} minSize={30}>
+              <div className="bg-slate-800/40 backdrop-blur-sm h-full p-4">
+                <div className="w-full h-full bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden shadow-xl">
+                  <VideoPlayer
+                    clips={timelineClips}
+                    currentTime={playheadPosition}
+                    isPlaying={isPlaying}
+                    onTimeUpdate={handleVideoTimeUpdate}
+                  />
+                </div>
               </div>
-            </div>
-          </div>
+            </ResizablePanel>
 
-          {/* Timeline Info Bar */}
-          <div className="bg-slate-800/40 backdrop-blur-sm border-b border-slate-700/50 px-4 py-3 shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-xs text-slate-300">Clips: </span>
-                  <span className="text-white font-semibold">{timelineClips.length}</span>
-                </div>
-                <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-xs text-slate-300">Duration: </span>
-                  <span className="text-white font-semibold">{totalDuration.toFixed(1)}s</span>
-                </div>
-                <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-xs text-slate-300">Zoom: </span>
-                  <span className="text-white font-semibold">{zoom.toFixed(1)}x</span>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="bg-slate-700/50 rounded-lg px-3 py-2">
-                  <span className="text-xs text-slate-300">Playhead: </span>
-                  <span className="text-white font-semibold">{playheadPosition.toFixed(1)}s</span>
-                </div>
-                <div className="text-xs text-slate-400">
-                  Hold Shift + Scroll to navigate timeline
-                </div>
-              </div>
-            </div>
-          </div>
+            <ResizableHandle withHandle />
 
-          {/* Timeline Container */}
-          <div className="flex-1 overflow-hidden bg-slate-900">
-            <div className="h-full flex flex-col" onWheel={handleTimelineScroll}>
-              <TimelineRuler
-                totalDuration={totalDuration}
-                zoom={zoom}
-                playheadPosition={playheadPosition}
-              />
-              
-              <div
-                ref={timelineRef}
-                className="flex-1 relative bg-gradient-to-r from-slate-800/60 to-slate-700/60 backdrop-blur-sm border-t border-slate-600/50 cursor-pointer shadow-inner"
-                onClick={handleTimelineClick}
-              >
-                <TimelineTrack
-                  clips={timelineClips}
-                  totalDuration={totalDuration}
-                  zoom={zoom}
-                  onClipRemove={handleClipRemoveWithToast}
-                  onClipReorder={handleClipReorder}
-                  draggedClip={draggedClip}
-                  setDraggedClip={setDraggedClip}
-                  scrollOffset={timelineScrollOffset}
-                />
-                
-                <Playhead
-                  position={playheadPosition}
-                  totalDuration={totalDuration}
-                  zoom={zoom}
-                  onPositionChange={setPlayheadPosition}
-                />
+            {/* Timeline Section */}
+            <ResizablePanel defaultSize={40} minSize={25}>
+              <div className="flex flex-col h-full">
+                {/* Timeline Info Bar */}
+                <div className="bg-slate-800/40 backdrop-blur-sm border-b border-slate-700/50 px-4 py-3 shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="bg-slate-700/50 rounded-lg px-3 py-2">
+                        <span className="text-xs text-slate-300">Clips: </span>
+                        <span className="text-white font-semibold">{timelineClips.length}</span>
+                      </div>
+                      <div className="bg-slate-700/50 rounded-lg px-3 py-2">
+                        <span className="text-xs text-slate-300">Duration: </span>
+                        <span className="text-white font-semibold">{totalDuration.toFixed(1)}s</span>
+                      </div>
+                      <div className="bg-slate-700/50 rounded-lg px-3 py-2">
+                        <span className="text-xs text-slate-300">Zoom: </span>
+                        <span className="text-white font-semibold">{zoom.toFixed(1)}x</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <div className="bg-slate-700/50 rounded-lg px-3 py-2">
+                        <span className="text-xs text-slate-300">Playhead: </span>
+                        <span className="text-white font-semibold">{playheadPosition.toFixed(1)}s</span>
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        Shift + Scroll to zoom timeline
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timeline Container */}
+                <div className="flex-1 overflow-hidden bg-slate-900">
+                  <div className="h-full flex flex-col" onWheel={handleTimelineScroll}>
+                    <TimelineRuler
+                      totalDuration={totalDuration}
+                      zoom={zoom}
+                      playheadPosition={playheadPosition}
+                    />
+                    
+                    <div
+                      ref={timelineRef}
+                      className="flex-1 relative bg-gradient-to-r from-slate-800/60 to-slate-700/60 backdrop-blur-sm border-t border-slate-600/50 cursor-pointer shadow-inner"
+                      onClick={handleTimelineClick}
+                    >
+                      <TimelineTrack
+                        clips={timelineClips}
+                        totalDuration={totalDuration}
+                        zoom={zoom}
+                        onClipRemove={handleClipRemoveWithToast}
+                        onClipReorder={handleClipReorder}
+                        draggedClip={draggedClip}
+                        setDraggedClip={setDraggedClip}
+                        scrollOffset={timelineScrollOffset}
+                      />
+                      
+                      <Playhead
+                        position={playheadPosition}
+                        totalDuration={totalDuration}
+                        zoom={zoom}
+                        onPositionChange={setPlayheadPosition}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 };
