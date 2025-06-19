@@ -23,19 +23,32 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [error, setError] = useState<string>('');
   const currentBlobUrlRef = useRef<string>('');
 
-  // Cleanup function for blob URLs
+  // Enhanced cleanup function for blob URLs
   const cleanupBlobUrl = useCallback(() => {
     if (currentBlobUrlRef.current) {
-      console.log('Cleaning up blob URL:', currentBlobUrlRef.current);
-      URL.revokeObjectURL(currentBlobUrlRef.current);
+      console.log('VideoPlayer: Cleaning up blob URL:', currentBlobUrlRef.current);
+      try {
+        URL.revokeObjectURL(currentBlobUrlRef.current);
+      } catch (err) {
+        console.warn('VideoPlayer: Error revoking blob URL:', err);
+      }
       currentBlobUrlRef.current = '';
     }
   }, []);
 
-  // Find the current clip based on playhead position
+  // Find the current clip based on playhead position with improved logging
   useEffect(() => {
-    console.log('VideoPlayer: Checking for active clip at time:', currentTime, 'from clips:', clips.length);
-    
+    if (clips.length === 0) {
+      if (currentClip) {
+        console.log('VideoPlayer: No clips available, clearing player');
+        setCurrentClip(null);
+        cleanupBlobUrl();
+        setVideoSrc('');
+        setError('');
+      }
+      return;
+    }
+
     const activeClip = clips.find(clip => 
       currentTime >= clip.position && currentTime < clip.position + clip.duration
     );
@@ -55,7 +68,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         console.log('VideoPlayer: Created new video src for clip:', activeClip.name);
       } catch (err) {
         console.error('VideoPlayer: Error creating video source:', err);
-        setError('Failed to load video');
+        setError('Failed to load video - file may be corrupted');
       }
     } else if (!activeClip && currentClip) {
       console.log('VideoPlayer: No active clip at current time, clearing player');
@@ -66,34 +79,35 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [currentTime, clips, currentClip?.id, cleanupBlobUrl]);
 
-  // Update video time based on clip position with better calculation
+  // Update video time based on clip position with better error handling
   useEffect(() => {
     if (videoRef.current && currentClip && videoSrc) {
       const timeInClip = Math.max(0, currentTime - currentClip.position);
       const videoTime = Math.max(0, currentClip.startTime + timeInClip);
       
-      console.log('VideoPlayer: Setting video time to:', videoTime.toFixed(2), 
-                  'for clip time:', timeInClip.toFixed(2), 
-                  'clip start:', currentClip.startTime);
-      
-      // Only update if the difference is significant to avoid constant seeking
-      if (Math.abs(videoRef.current.currentTime - videoTime) > 0.2) {
-        videoRef.current.currentTime = videoTime;
+      // Only update if the difference is significant and video is ready
+      if (Math.abs(videoRef.current.currentTime - videoTime) > 0.2 && videoRef.current.readyState >= 2) {
+        try {
+          videoRef.current.currentTime = videoTime;
+          console.log('VideoPlayer: Setting video time to:', videoTime.toFixed(2), 
+                      'for clip time:', timeInClip.toFixed(2), 
+                      'clip start:', currentClip.startTime);
+        } catch (err) {
+          console.error('VideoPlayer: Error setting video time:', err);
+        }
       }
     }
   }, [currentTime, currentClip, videoSrc]);
 
-  // Handle play/pause
+  // Handle play/pause with better error handling
   useEffect(() => {
     if (videoRef.current && videoSrc && currentClip) {
       if (isPlaying) {
-        console.log('VideoPlayer: Playing video');
         videoRef.current.play().catch(err => {
           console.error('VideoPlayer: Play error:', err);
-          setError('Failed to play video');
+          setError('Failed to play video - check file format');
         });
       } else {
-        console.log('VideoPlayer: Pausing video');
         videoRef.current.pause();
       }
     }
@@ -124,6 +138,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setError('Video playback error - file may be corrupted or unsupported format');
   };
 
+  const handleCanPlay = () => {
+    console.log('VideoPlayer: Video can play for clip:', currentClip?.name);
+  };
+
   return (
     <div className="w-full h-full bg-black flex items-center justify-center">
       {error ? (
@@ -139,6 +157,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           className="max-w-full max-h-full object-contain"
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
+          onCanPlay={handleCanPlay}
           onError={handleError}
           muted
           playsInline
