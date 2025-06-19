@@ -1,3 +1,4 @@
+
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -292,20 +293,20 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
       });
     };
 
-    try {
-      // Process all clips sequentially for better progress tracking
-      for (let i = 0; i < validClips.length; i++) {
-        await processClip(validClips[i], i);
-      }
+    // Process all clips sequentially for better progress tracking
+    for (let i = 0; i < validClips.length; i++) {
+      await processClip(validClips[i], i);
+    }
 
-      compilationProgress.set(jobId, { percent: 75, stage: 'Concatenating clips...' });
+    compilationProgress.set(jobId, { percent: 75, stage: 'Concatenating clips...' });
 
-      // Create concat file list
-      const concatListPath = path.join(tempDir, 'concat_list.txt');
-      const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
-      fs.writeFileSync(concatListPath, concatContent);
+    // Create concat file list
+    const concatListPath = path.join(tempDir, 'concat_list.txt');
+    const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
+    fs.writeFileSync(concatListPath, concatContent);
 
-      // Concatenate all clips
+    // Concatenate all clips
+    await new Promise((resolve, reject) => {
       ffmpeg()
         .input(concatListPath)
         .inputOptions(['-f', 'concat', '-safe', '0'])
@@ -325,93 +326,37 @@ async function processMultipleClips(jobId, validClips, files, outputPath, videoS
         })
         .on('end', () => {
           console.log('Video compilation completed!');
-          compilationProgress.set(jobId, { percent: 100, stage: 'Complete!' });
-          
-          // Clean up temp files
-          tempClips.forEach(tempClip => {
-            if (fs.existsSync(tempClip)) {
-              fs.unlinkSync(tempClip);
-            }
-          });
-          if (fs.existsSync(concatListPath)) {
-            fs.unlinkSync(concatListPath);
-          }
-          
-          // Clean up uploaded files
-          files.forEach(file => {
-            fs.unlinkSync(file.path);
-          });
-
-          // Clean up progress after 5 minutes
-          setTimeout(() => {
-            compilationProgress.delete(jobId);
-          }, 300000);
-
-          res.json({ 
-            success: true, 
-            message: 'Video compiled successfully',
-            outputFile: outputFilename,
-            downloadUrl: `/download/${outputFilename}`,
-            jobId: jobId
-          });
+          resolve();
         })
         .on('error', (err) => {
           console.error('FFmpeg concat error:', err);
-          compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + err.message });
-          
-          // Clean up temp files
-          tempClips.forEach(tempClip => {
-            if (fs.existsSync(tempClip)) {
-              fs.unlinkSync(tempClip);
-            }
-          });
-          if (fs.existsSync(concatListPath)) {
-            fs.unlinkSync(concatListPath);
-          }
-          
-          // Clean up uploaded files
-          files.forEach(file => {
-            if (fs.existsSync(file.path)) {
-              fs.unlinkSync(file.path);
-            }
-          });
-
-          res.status(500).json({ error: 'Video compilation failed: ' + err.message });
+          reject(err);
         })
         .run();
+    });
 
-    } catch (error) {
-      console.error('Error processing clips:', error);
-      compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
-      
-      // Clean up temp files
-      tempClips.forEach(tempClip => {
-        if (fs.existsSync(tempClip)) {
-          fs.unlinkSync(tempClip);
-        }
-      });
-      
-      // Clean up uploaded files
-      files.forEach(file => {
-        if (fs.existsSync(file.path)) {
-          fs.unlinkSync(file.path);
-        }
-      });
-
-      res.status(500).json({ error: 'Video processing failed: ' + error.message });
+    // Clean up temp files
+    tempClips.forEach(tempClip => {
+      if (fs.existsSync(tempClip)) {
+        fs.unlinkSync(tempClip);
+      }
+    });
+    if (fs.existsSync(concatListPath)) {
+      fs.unlinkSync(concatListPath);
     }
+
   } catch (error) {
     console.error('Error processing clips:', error);
     compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
     
-    // Clean up uploaded files
-    files.forEach(file => {
-      if (fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
+    // Clean up temp files
+    tempClips.forEach(tempClip => {
+      if (fs.existsSync(tempClip)) {
+        fs.unlinkSync(tempClip);
       }
     });
-
-    res.status(500).json({ error: 'Video processing failed: ' + error.message });
+    
+    throw error;
   }
 }
 
