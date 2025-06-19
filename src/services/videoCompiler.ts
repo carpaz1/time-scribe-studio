@@ -92,15 +92,30 @@ export class VideoCompilerService {
       }
 
       const result = await response.json();
-      console.log('Server response:', result);
+      console.log('Server response received:', result);
       
-      // If we have a jobId, poll for progress
+      // Check if server is processing (no jobId means immediate response)
       if (result.jobId && onProgress) {
         console.log('Starting progress polling for job:', result.jobId);
-        await this.pollProgress(result.jobId, onProgress);
+        onProgress(10, 'Server processing started...');
+        
+        // Poll for progress with improved error handling
+        try {
+          await this.pollProgress(result.jobId, onProgress);
+        } catch (pollError) {
+          console.error('Progress polling failed:', pollError);
+          // Don't fail the entire compilation if polling fails
+          onProgress(95, 'Finalizing...');
+        }
+      } else if (result.success) {
+        // Immediate success response
+        console.log('Immediate compilation success');
+        if (onProgress) {
+          onProgress(100, 'Complete!');
+        }
       }
       
-      console.log('Compilation result:', result);
+      console.log('Final compilation result:', result);
 
       const compileData: CompileRequest = { config, clips: timelineClips };
       onExport?.(compileData);
@@ -123,54 +138,92 @@ export class VideoCompilerService {
     
     return new Promise((resolve, reject) => {
       let pollCount = 0;
-      const maxPolls = 1200; // 10 minutes at 500ms intervals
+      let consecutiveErrors = 0;
+      const maxPolls = 600; // 5 minutes at 500ms intervals
+      const maxConsecutiveErrors = 10;
       
       const pollInterval = setInterval(async () => {
         pollCount++;
         console.log(`Progress poll #${pollCount} for job ${jobId}`);
         
         try {
-          const response = await fetch(`http://localhost:4000/progress/${jobId}`);
+          const progressResponse = await fetch(`http://localhost:4000/progress/${jobId}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
           
-          if (!response.ok) {
-            console.error('Progress poll failed:', response.status);
-            clearInterval(pollInterval);
-            reject(new Error('Failed to get progress'));
+          if (!progressResponse.ok) {
+            console.error('Progress poll failed:', progressResponse.status, progressResponse.statusText);
+            consecutiveErrors++;
+            
+            if (consecutiveErrors >= maxConsecutiveErrors) {
+              console.error('Too many consecutive progress poll failures');
+              clearInterval(pollInterval);
+              reject(new Error('Progress polling failed repeatedly'));
+              return;
+            }
+            
+            // Continue polling on single failures
             return;
           }
 
-          const progressData = await response.json();
-          console.log('Progress data:', progressData);
-          onProgress(progressData.percent, progressData.stage);
+          const progressData = await progressResponse.json();
+          console.log('Progress data received:', progressData);
+          
+          // Reset error counter on successful response
+          consecutiveErrors = 0;
+          
+          // Update progress
+          onProgress(progressData.percent || 0, progressData.stage || 'Processing...');
 
-          // If complete or error, stop polling
-          if (progressData.percent >= 100 || progressData.stage.startsWith('Error:')) {
-            console.log('Progress polling complete');
+          // Check for completion
+          if (progressData.percent >= 100) {
+            console.log('Progress polling complete - 100% reached');
             clearInterval(pollInterval);
             resolve();
+            return;
+          }
+          
+          // Check for error states
+          if (progressData.stage && progressData.stage.toLowerCase().includes('error')) {
+            console.error('Server reported error:', progressData.stage);
+            clearInterval(pollInterval);
+            reject(new Error(progressData.stage));
+            return;
           }
           
           // Timeout protection
           if (pollCount >= maxPolls) {
             console.warn('Progress polling timeout reached');
             clearInterval(pollInterval);
-            resolve();
+            resolve(); // Don't fail, just stop polling
           }
         } catch (error) {
-          console.error('Progress polling error:', error);
-          // Continue polling on network errors, but track failures
-          if (pollCount % 10 === 0) {
-            console.warn(`Progress polling has failed ${pollCount} times`);
+          console.error('Progress polling network error:', error);
+          consecutiveErrors++;
+          
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            console.error('Too many consecutive network errors in progress polling');
+            clearInterval(pollInterval);
+            reject(new Error('Network error during progress polling'));
+            return;
+          }
+          
+          // Log periodic warnings but continue
+          if (pollCount % 20 === 0) {
+            console.warn(`Progress polling has failed ${consecutiveErrors} times recently`);
           }
         }
       }, 500);
 
-      // Cleanup timeout
+      // Cleanup timeout - ensure we don't poll forever
       setTimeout(() => {
-        console.log('Progress polling cleanup timeout');
+        console.log('Progress polling cleanup timeout reached');
         clearInterval(pollInterval);
         resolve();
-      }, 600000);
+      }, 300000); // 5 minutes total timeout
     });
   }
 

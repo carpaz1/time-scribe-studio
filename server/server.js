@@ -1,4 +1,3 @@
-
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -47,7 +46,15 @@ const upload = multer({ storage });
 // Progress endpoint
 app.get('/progress/:jobId', (req, res) => {
   const jobId = req.params.jobId;
-  const progress = compilationProgress.get(jobId) || { percent: 0, stage: 'Starting...' };
+  console.log(`Progress request for job: ${jobId}`);
+  
+  const progress = compilationProgress.get(jobId);
+  if (!progress) {
+    console.log(`No progress found for job: ${jobId}`);
+    return res.json({ percent: 0, stage: 'Starting...' });
+  }
+  
+  console.log(`Returning progress for job ${jobId}:`, progress);
   res.json(progress);
 });
 
@@ -56,21 +63,49 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
   const jobId = Date.now().toString();
   
   try {
-    console.log('Received compilation request - Job ID:', jobId);
-    console.log('Files:', req.files?.length || 0);
+    console.log('=== NEW COMPILATION REQUEST ===');
+    console.log('Job ID:', jobId);
+    console.log('Files received:', req.files?.length || 0);
 
+    // Initialize progress immediately
     compilationProgress.set(jobId, { percent: 5, stage: 'Processing files...' });
+    console.log('Initial progress set for job:', jobId);
 
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No video files uploaded' });
     }
 
     const clipsData = JSON.parse(req.body.clipsData || '[]');
+    console.log('Clips data parsed:', clipsData.length, 'clips');
     
     if (clipsData.length === 0) {
       return res.status(400).json({ error: 'No clips data provided' });
     }
 
+    // Send immediate response with jobId
+    res.json({ 
+      success: true,
+      message: 'Compilation started',
+      jobId: jobId
+    });
+    console.log('Response sent to client with jobId:', jobId);
+
+    // Continue processing asynchronously
+    processVideoCompilation(jobId, req.files, clipsData);
+
+  } catch (error) {
+    console.error('Upload endpoint error:', error);
+    compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Server error: ' + error.message });
+    }
+  }
+});
+
+async function processVideoCompilation(jobId, files, clipsData) {
+  try {
+    console.log(`Starting async processing for job: ${jobId}`);
+    
     compilationProgress.set(jobId, { percent: 10, stage: 'Preparing clips...' });
 
     // Generate output filename
@@ -81,12 +116,13 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
     const sortedClips = clipsData.sort((a, b) => a.position - b.position);
 
     // Filter valid clips
-    const validClips = sortedClips.filter(clip => req.files[clip.fileIndex]);
+    const validClips = sortedClips.filter(clip => files[clip.fileIndex]);
     if (validClips.length === 0) {
-      return res.status(400).json({ error: 'No valid clips to process' });
+      compilationProgress.set(jobId, { percent: 0, stage: 'Error: No valid clips to process' });
+      return;
     }
 
-    console.log('Starting optimized FFmpeg processing with', validClips.length, 'clips...');
+    console.log('Starting FFmpeg processing with', validClips.length, 'clips...');
 
     compilationProgress.set(jobId, { percent: 15, stage: 'Starting GPU encoding...' });
 
@@ -100,54 +136,209 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
     // Optimized NVENC settings for faster encoding
     const nvencOptions = [
       '-c:v', 'h264_nvenc',
-      '-preset', 'p4', // Fastest preset for RTX cards
+      '-preset', 'p1', // Fastest preset
       '-tune', 'hq',
       '-rc', 'vbr',
-      '-cq', '25', // Slightly higher for speed
-      '-b:v', '8M',
-      '-maxrate', '12M',
-      '-bufsize', '16M',
+      '-cq', '28', // Slightly higher for speed
+      '-b:v', '6M', // Lower bitrate for speed
+      '-maxrate', '8M',
+      '-bufsize', '12M',
       '-gpu', 'any',
       '-movflags', '+faststart',
       '-pix_fmt', 'yuv420p'
     ];
 
-    // If only one clip, use simpler approach
+    // Process based on clip count
     if (validClips.length === 1) {
-      compilationProgress.set(jobId, { percent: 20, stage: 'Encoding single clip...' });
-      
-      const clip = validClips[0];
-      const file = req.files[clip.fileIndex];
-      
-      ffmpeg(file.path)
-        .seekInput(clip.startTime)
-        .duration(clip.duration)
+      await processSingleClip(jobId, validClips[0], files, outputPath, videoSettings, nvencOptions);
+    } else {
+      await processMultipleClips(jobId, validClips, files, outputPath, videoSettings, nvencOptions);
+    }
+
+    // Mark as complete
+    compilationProgress.set(jobId, { 
+      percent: 100, 
+      stage: 'Complete!',
+      downloadUrl: `/download/${outputFilename}`,
+      outputFile: outputFilename
+    });
+
+    console.log(`Compilation completed for job: ${jobId}`);
+
+    // Clean up uploaded files
+    files.forEach(file => {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    });
+
+    // Clean up progress after 5 minutes
+    setTimeout(() => {
+      compilationProgress.delete(jobId);
+      console.log(`Progress data cleaned up for job: ${jobId}`);
+    }, 300000);
+
+  } catch (error) {
+    console.error(`Processing error for job ${jobId}:`, error);
+    compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
+    
+    // Clean up uploaded files
+    files.forEach(file => {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    });
+  }
+}
+
+function processSingleClip(jobId, clip, files, outputPath, videoSettings, nvencOptions) {
+  return new Promise((resolve, reject) => {
+    console.log(`Processing single clip for job: ${jobId}`);
+    compilationProgress.set(jobId, { percent: 20, stage: 'Encoding single clip...' });
+    
+    const file = files[clip.fileIndex];
+    
+    ffmpeg(file.path)
+      .seekInput(clip.startTime)
+      .duration(clip.duration)
+      .audioCodec('aac')
+      .audioBitrate('128k')
+      .size(`${videoSettings.width}x${videoSettings.height}`)
+      .fps(videoSettings.fps)
+      .aspect('16:9')
+      .autopad(true, 'black')
+      .outputOptions(nvencOptions)
+      .output(outputPath)
+      .on('start', (commandLine) => {
+        console.log(`FFmpeg started for job ${jobId}:`, commandLine);
+        compilationProgress.set(jobId, { percent: 25, stage: 'GPU encoding in progress...' });
+      })
+      .on('progress', (progress) => {
+        const percent = Math.min(95, 25 + (progress.percent || 0) * 0.7);
+        compilationProgress.set(jobId, { 
+          percent: percent, 
+          stage: `Encoding: ${Math.round(progress.percent || 0)}%` 
+        });
+        console.log(`Job ${jobId} progress:`, percent + '%');
+      })
+      .on('end', () => {
+        console.log(`Video compilation completed for job: ${jobId}`);
+        resolve();
+      })
+      .on('error', (err) => {
+        console.error(`FFmpeg error for job ${jobId}:`, err);
+        reject(err);
+      })
+      .run();
+  });
+}
+
+// Multiple clips - optimized concat approach
+async function processMultipleClips(jobId, validClips, files, outputPath, videoSettings, nvencOptions) {
+  try {
+    compilationProgress.set(jobId, { percent: 20, stage: 'Processing multiple clips...' });
+    
+    const tempDir = path.join(__dirname, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const tempClips = [];
+    let processedCount = 0;
+
+    const processClip = (clip, index) => {
+      return new Promise((resolve, reject) => {
+        const file = files[clip.fileIndex];
+        const tempClipPath = path.join(tempDir, `temp_clip_${index}.mp4`);
+        tempClips.push(tempClipPath);
+
+        const clipProgress = 20 + (index / validClips.length) * 50;
+        compilationProgress.set(jobId, { 
+          percent: clipProgress, 
+          stage: `Processing clip ${index + 1}/${validClips.length}...` 
+        });
+
+        ffmpeg(file.path)
+          .seekInput(clip.startTime)
+          .duration(clip.duration)
+          .audioCodec('aac')
+          .audioBitrate('128k')
+          .size(`${videoSettings.width}x${videoSettings.height}`)
+          .fps(videoSettings.fps)
+          .aspect('16:9')
+          .autopad(true, 'black')
+          .outputOptions([
+            '-c:v', 'h264_nvenc',
+            '-preset', 'p1',
+            '-cq', '28',
+            '-f', 'mp4',
+            '-pix_fmt', 'yuv420p'
+          ])
+          .output(tempClipPath)
+          .on('progress', (progress) => {
+            const subProgress = clipProgress + ((progress.percent || 0) / 100) * (50 / validClips.length);
+            compilationProgress.set(jobId, { 
+              percent: subProgress, 
+              stage: `Processing clip ${index + 1}/${validClips.length}: ${Math.round(progress.percent || 0)}%` 
+            });
+          })
+          .on('end', () => {
+            processedCount++;
+            console.log(`Processed clip ${processedCount}/${validClips.length}`);
+            resolve();
+          })
+          .on('error', reject)
+          .run();
+      });
+    };
+
+    try {
+      // Process all clips sequentially for better progress tracking
+      for (let i = 0; i < validClips.length; i++) {
+        await processClip(validClips[i], i);
+      }
+
+      compilationProgress.set(jobId, { percent: 75, stage: 'Concatenating clips...' });
+
+      // Create concat file list
+      const concatListPath = path.join(tempDir, 'concat_list.txt');
+      const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
+      fs.writeFileSync(concatListPath, concatContent);
+
+      // Concatenate all clips
+      ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
         .audioCodec('aac')
-        .audioBitrate('128k')
-        .size(`${videoSettings.width}x${videoSettings.height}`)
-        .fps(videoSettings.fps)
-        .aspect('16:9')
-        .autopad(true, 'black')
         .outputOptions(nvencOptions)
         .output(outputPath)
         .on('start', (commandLine) => {
-          console.log('FFmpeg started:', commandLine);
-          compilationProgress.set(jobId, { percent: 25, stage: 'GPU encoding in progress...' });
+          console.log('FFmpeg concat started:', commandLine);
+          compilationProgress.set(jobId, { percent: 80, stage: 'Final encoding...' });
         })
         .on('progress', (progress) => {
-          const percent = Math.min(95, 25 + (progress.percent || 0) * 0.7);
+          const percent = Math.min(95, 80 + (progress.percent || 0) * 0.15);
           compilationProgress.set(jobId, { 
             percent: percent, 
-            stage: `Encoding: ${Math.round(progress.percent || 0)}%` 
+            stage: `Final encoding: ${Math.round(progress.percent || 0)}%` 
           });
-          console.log('Progress:', percent + '%');
         })
         .on('end', () => {
           console.log('Video compilation completed!');
           compilationProgress.set(jobId, { percent: 100, stage: 'Complete!' });
           
+          // Clean up temp files
+          tempClips.forEach(tempClip => {
+            if (fs.existsSync(tempClip)) {
+              fs.unlinkSync(tempClip);
+            }
+          });
+          if (fs.existsSync(concatListPath)) {
+            fs.unlinkSync(concatListPath);
+          }
+          
           // Clean up uploaded files
-          req.files.forEach(file => {
+          files.forEach(file => {
             fs.unlinkSync(file.path);
           });
 
@@ -165,11 +356,21 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
           });
         })
         .on('error', (err) => {
-          console.error('FFmpeg error:', err);
+          console.error('FFmpeg concat error:', err);
           compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + err.message });
           
+          // Clean up temp files
+          tempClips.forEach(tempClip => {
+            if (fs.existsSync(tempClip)) {
+              fs.unlinkSync(tempClip);
+            }
+          });
+          if (fs.existsSync(concatListPath)) {
+            fs.unlinkSync(concatListPath);
+          }
+          
           // Clean up uploaded files
-          req.files.forEach(file => {
+          files.forEach(file => {
             if (fs.existsSync(file.path)) {
               fs.unlinkSync(file.path);
             }
@@ -178,180 +379,41 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
           res.status(500).json({ error: 'Video compilation failed: ' + err.message });
         })
         .run();
-    } else {
-      // Multiple clips - optimized concat approach
-      compilationProgress.set(jobId, { percent: 20, stage: 'Processing multiple clips...' });
+
+    } catch (error) {
+      console.error('Error processing clips:', error);
+      compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
       
-      const tempDir = path.join(__dirname, 'temp');
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-
-      const tempClips = [];
-      let processedCount = 0;
-
-      const processClip = (clip, index) => {
-        return new Promise((resolve, reject) => {
-          const file = req.files[clip.fileIndex];
-          const tempClipPath = path.join(tempDir, `temp_clip_${index}.mp4`);
-          tempClips.push(tempClipPath);
-
-          const clipProgress = 20 + (index / validClips.length) * 50;
-          compilationProgress.set(jobId, { 
-            percent: clipProgress, 
-            stage: `Processing clip ${index + 1}/${validClips.length}...` 
-          });
-
-          ffmpeg(file.path)
-            .seekInput(clip.startTime)
-            .duration(clip.duration)
-            .audioCodec('aac')
-            .audioBitrate('128k')
-            .size(`${videoSettings.width}x${videoSettings.height}`)
-            .fps(videoSettings.fps)
-            .aspect('16:9')
-            .autopad(true, 'black')
-            .outputOptions([
-              '-c:v', 'h264_nvenc',
-              '-preset', 'p4',
-              '-cq', '25',
-              '-f', 'mp4',
-              '-pix_fmt', 'yuv420p'
-            ])
-            .output(tempClipPath)
-            .on('progress', (progress) => {
-              const subProgress = clipProgress + ((progress.percent || 0) / 100) * (50 / validClips.length);
-              compilationProgress.set(jobId, { 
-                percent: subProgress, 
-                stage: `Processing clip ${index + 1}/${validClips.length}: ${Math.round(progress.percent || 0)}%` 
-              });
-            })
-            .on('end', () => {
-              processedCount++;
-              console.log(`Processed clip ${processedCount}/${validClips.length}`);
-              resolve();
-            })
-            .on('error', reject)
-            .run();
-        });
-      };
-
-      try {
-        // Process all clips sequentially for better progress tracking
-        for (let i = 0; i < validClips.length; i++) {
-          await processClip(validClips[i], i);
+      // Clean up temp files
+      tempClips.forEach(tempClip => {
+        if (fs.existsSync(tempClip)) {
+          fs.unlinkSync(tempClip);
         }
+      });
+      
+      // Clean up uploaded files
+      files.forEach(file => {
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      });
 
-        compilationProgress.set(jobId, { percent: 75, stage: 'Concatenating clips...' });
-
-        // Create concat file list
-        const concatListPath = path.join(tempDir, 'concat_list.txt');
-        const concatContent = tempClips.map(clip => `file '${clip}'`).join('\n');
-        fs.writeFileSync(concatListPath, concatContent);
-
-        // Concatenate all clips
-        ffmpeg()
-          .input(concatListPath)
-          .inputOptions(['-f', 'concat', '-safe', '0'])
-          .audioCodec('aac')
-          .outputOptions(nvencOptions)
-          .output(outputPath)
-          .on('start', (commandLine) => {
-            console.log('FFmpeg concat started:', commandLine);
-            compilationProgress.set(jobId, { percent: 80, stage: 'Final encoding...' });
-          })
-          .on('progress', (progress) => {
-            const percent = Math.min(95, 80 + (progress.percent || 0) * 0.15);
-            compilationProgress.set(jobId, { 
-              percent: percent, 
-              stage: `Final encoding: ${Math.round(progress.percent || 0)}%` 
-            });
-          })
-          .on('end', () => {
-            console.log('Video compilation completed!');
-            compilationProgress.set(jobId, { percent: 100, stage: 'Complete!' });
-            
-            // Clean up temp files
-            tempClips.forEach(tempClip => {
-              if (fs.existsSync(tempClip)) {
-                fs.unlinkSync(tempClip);
-              }
-            });
-            if (fs.existsSync(concatListPath)) {
-              fs.unlinkSync(concatListPath);
-            }
-            
-            // Clean up uploaded files
-            req.files.forEach(file => {
-              fs.unlinkSync(file.path);
-            });
-
-            // Clean up progress after 5 minutes
-            setTimeout(() => {
-              compilationProgress.delete(jobId);
-            }, 300000);
-
-            res.json({ 
-              success: true, 
-              message: 'Video compiled successfully',
-              outputFile: outputFilename,
-              downloadUrl: `/download/${outputFilename}`,
-              jobId: jobId
-            });
-          })
-          .on('error', (err) => {
-            console.error('FFmpeg concat error:', err);
-            compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + err.message });
-            
-            // Clean up temp files
-            tempClips.forEach(tempClip => {
-              if (fs.existsSync(tempClip)) {
-                fs.unlinkSync(tempClip);
-              }
-            });
-            if (fs.existsSync(concatListPath)) {
-              fs.unlinkSync(concatListPath);
-            }
-            
-            // Clean up uploaded files
-            req.files.forEach(file => {
-              if (fs.existsSync(file.path)) {
-                fs.unlinkSync(file.path);
-              }
-            });
-
-            res.status(500).json({ error: 'Video compilation failed: ' + err.message });
-          })
-          .run();
-
-      } catch (error) {
-        console.error('Error processing clips:', error);
-        compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
-        
-        // Clean up temp files
-        tempClips.forEach(tempClip => {
-          if (fs.existsSync(tempClip)) {
-            fs.unlinkSync(tempClip);
-          }
-        });
-        
-        // Clean up uploaded files
-        req.files.forEach(file => {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        });
-
-        res.status(500).json({ error: 'Video processing failed: ' + error.message });
-      }
+      res.status(500).json({ error: 'Video processing failed: ' + error.message });
     }
-
   } catch (error) {
-    console.error('Server error:', error);
+    console.error('Error processing clips:', error);
     compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
-    res.status(500).json({ error: 'Server error: ' + error.message });
+    
+    // Clean up uploaded files
+    files.forEach(file => {
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    });
+
+    res.status(500).json({ error: 'Video processing failed: ' + error.message });
   }
-});
+}
 
 // Download endpoint
 app.get('/download/:filename', (req, res) => {
