@@ -4,7 +4,7 @@ import { VideoClip, SourceVideo } from '@/types/timeline';
 import { Separator } from '@/components/ui/separator';
 import VideoUploader from './VideoUploader';
 import BulkDirectorySelector from './BulkDirectorySelector';
-import ClipThumbnail from './ClipThumbnail';
+import LibraryClipThumbnail from './LibraryClipThumbnail';
 import { Button } from '@/components/ui/button';
 import { Shuffle } from 'lucide-react';
 
@@ -85,7 +85,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
               
               <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
                 {clips.map((clip) => (
-                  <ClipThumbnail
+                  <LibraryClipThumbnail
                     key={clip.id}
                     clip={clip}
                     onAdd={() => onClipAdd(clip)}
