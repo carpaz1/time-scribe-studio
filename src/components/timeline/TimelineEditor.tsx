@@ -219,24 +219,44 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     try {
       const formData = new FormData();
       
-      // Add clips data as JSON
-      const clipsData = timelineClips.map((clip, index) => ({
-        id: clip.id,
-        name: clip.name,
-        startTime: clip.startTime,
-        duration: clip.duration,
-        position: clip.position,
-        fileIndex: index
-      }));
-      
-      formData.append('clips', JSON.stringify(clipsData));
-      
-      // Add video files
-      timelineClips.forEach((clip, index) => {
-        formData.append(`video_${index}`, clip.sourceFile);
+      // Group clips by their source file to avoid duplicates
+      const uniqueFiles = new Map();
+      timelineClips.forEach((clip) => {
+        const fileKey = clip.sourceFile.name + clip.sourceFile.size;
+        if (!uniqueFiles.has(fileKey)) {
+          uniqueFiles.set(fileKey, {
+            file: clip.sourceFile,
+            clips: []
+          });
+        }
+        uniqueFiles.get(fileKey).clips.push(clip);
       });
 
-      console.log('Sending compilation request with', timelineClips.length, 'clips');
+      // Add unique video files
+      const fileArray = Array.from(uniqueFiles.values());
+      fileArray.forEach((fileData, index) => {
+        formData.append('videos', fileData.file);
+      });
+
+      // Create clips data with file references
+      const clipsData = [];
+      timelineClips.forEach((clip) => {
+        const fileKey = clip.sourceFile.name + clip.sourceFile.size;
+        const fileIndex = fileArray.findIndex(f => f.file.name === clip.sourceFile.name && f.file.size === clip.sourceFile.size);
+        
+        clipsData.push({
+          id: clip.id,
+          name: clip.name,
+          startTime: clip.startTime,
+          duration: clip.duration,
+          position: clip.position,
+          fileIndex: fileIndex
+        });
+      });
+      
+      formData.append('clipsData', JSON.stringify(clipsData));
+
+      console.log('Sending compilation request with', timelineClips.length, 'clips and', fileArray.length, 'unique files');
 
       const response = await fetch('http://localhost:4000/upload', {
         method: 'POST',
