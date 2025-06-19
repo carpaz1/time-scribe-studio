@@ -23,8 +23,10 @@ const Playhead: React.FC<PlayheadProps> = ({
     setIsDragging(true);
 
     const handleMouseMove = (e: MouseEvent) => {
-      const timeline = e.currentTarget as HTMLElement;
-      const rect = timeline.getBoundingClientRect();
+      const timelineElement = document.querySelector('[data-timeline-track]') as HTMLElement;
+      if (!timelineElement) return;
+      
+      const rect = timelineElement.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const newPosition = Math.max(0, Math.min(totalDuration, (x / rect.width) * (totalDuration / zoom)));
       onPositionChange(newPosition);

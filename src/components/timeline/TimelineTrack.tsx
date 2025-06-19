@@ -59,9 +59,11 @@ const TimelineTrack: React.FC<TimelineTrackProps> = ({
 
   return (
     <div
-      className="absolute inset-0 overflow-hidden"
+      className="absolute inset-0 overflow-hidden bg-gray-800"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
+      style={{ height: '100px' }}
+      data-timeline-track
     >
       {clips.map((clip) => (
         <ClipThumbnail

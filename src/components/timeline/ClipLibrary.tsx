@@ -1,102 +1,29 @@
 
-import React, { useRef } from 'react';
-import { Plus, Upload, FileVideo } from 'lucide-react';
+import React from 'react';
+import { Plus, FileVideo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { VideoClip } from '@/types/timeline';
+import { VideoClip, SourceVideo } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
+import VideoUploader from './VideoUploader';
 
 interface ClipLibraryProps {
   clips: VideoClip[];
+  sourceVideos: SourceVideo[];
   onClipAdd: (clip: VideoClip) => void;
   onClipsUpdate: (clips: VideoClip[]) => void;
+  onSourceVideosUpdate: (videos: SourceVideo[]) => void;
+  onClipsGenerated: (clips: VideoClip[]) => void;
 }
 
 const ClipLibrary: React.FC<ClipLibraryProps> = ({
   clips,
+  sourceVideos,
   onClipAdd,
   onClipsUpdate,
+  onSourceVideosUpdate,
+  onClipsGenerated,
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-
-  const handleFileUpload = (files: FileList) => {
-    Array.from(files).forEach(async (file) => {
-      if (!file.type.startsWith('video/')) {
-        toast({
-          title: "Invalid file type",
-          description: `${file.name} is not a video file`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Create thumbnail
-      const thumbnail = await createThumbnail(file);
-      
-      // Get video duration
-      const duration = await getVideoDuration(file);
-
-      const newClip: VideoClip = {
-        id: `clip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        name: file.name.replace(/\.[^/.]+$/, ''),
-        startTime: 0,
-        duration: duration,
-        thumbnail: thumbnail,
-        sourceFile: file,
-        position: 0,
-      };
-
-      onClipsUpdate([...clips, newClip]);
-      
-      toast({
-        title: "Clip uploaded",
-        description: `${newClip.name} is ready to use`,
-      });
-    });
-  };
-
-  const createThumbnail = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-
-      video.onloadedmetadata = () => {
-        canvas.width = 160;
-        canvas.height = 90;
-        video.currentTime = Math.min(1, video.duration / 2);
-      };
-
-      video.onseeked = () => {
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL());
-        }
-      };
-
-      video.src = URL.createObjectURL(file);
-    });
-  };
-
-  const getVideoDuration = (file: File): Promise<number> => {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      video.onloadedmetadata = () => {
-        resolve(video.duration);
-      };
-      video.src = URL.createObjectURL(file);
-    });
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFileUpload(e.target.files);
-    }
-  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -105,31 +32,18 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files);
-    }
+    // Handle file drops if needed
   };
 
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold text-white mb-3">Clip Library</h2>
+        <h2 className="text-lg font-semibold text-white mb-3">Video Library</h2>
         
-        <Button
-          onClick={handleUploadClick}
-          className="w-full bg-blue-600 hover:bg-blue-700"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          Upload Videos
-        </Button>
-        
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="video/*"
-          multiple
-          onChange={handleFileInputChange}
-          className="hidden"
+        <VideoUploader
+          sourceVideos={sourceVideos}
+          onSourceVideosUpdate={onSourceVideosUpdate}
+          onClipsGenerated={onClipsGenerated}
         />
       </div>
 
@@ -141,10 +55,11 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         {clips.length === 0 ? (
           <div className="text-center text-gray-400 py-8">
             <FileVideo className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p className="text-sm">Drop video files here or click upload</p>
+            <p className="text-sm">Generate clips from your videos</p>
           </div>
         ) : (
           <div className="space-y-3">
+            <h3 className="text-sm font-medium text-white">Generated Clips</h3>
             {clips.map((clip) => (
               <div
                 key={clip.id}
@@ -169,7 +84,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
                       {clip.name}
                     </p>
                     <p className="text-xs text-gray-400">
-                      {clip.duration.toFixed(1)}s
+                      {clip.duration.toFixed(1)}s @ {clip.startTime.toFixed(1)}s
                     </p>
                   </div>
                   

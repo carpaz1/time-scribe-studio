@@ -2,7 +2,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { VideoClip, TimelineConfig, CompileRequest } from '@/types/timeline';
+import { VideoClip, SourceVideo, TimelineConfig, CompileRequest } from '@/types/timeline';
 import TimelineTrack from './TimelineTrack';
 import Playhead from './Playhead';
 import TimelineRuler from './TimelineRuler';
@@ -19,6 +19,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   onExport 
 }) => {
   const [clips, setClips] = useState<VideoClip[]>(initialClips);
+  const [sourceVideos, setSourceVideos] = useState<SourceVideo[]>([]);
   const [timelineClips, setTimelineClips] = useState<VideoClip[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadPosition, setPlayheadPosition] = useState(0);
@@ -141,6 +142,14 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           : clip
       );
       return updated.sort((a, b) => a.position - b.position);
+    });
+  };
+
+  const handleClipsGenerated = (generatedClips: VideoClip[]) => {
+    setClips(generatedClips);
+    toast({
+      title: "Clips ready",
+      description: `${generatedClips.length} clips generated and ready to add to timeline`,
     });
   };
 
@@ -307,8 +316,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         <div className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
           <ClipLibrary
             clips={clips}
+            sourceVideos={sourceVideos}
             onClipAdd={handleClipAdd}
             onClipsUpdate={setClips}
+            onSourceVideosUpdate={setSourceVideos}
+            onClipsGenerated={handleClipsGenerated}
           />
         </div>
 
