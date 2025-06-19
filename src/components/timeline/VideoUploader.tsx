@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Upload, Scissors, Shuffle } from 'lucide-react';
+import { Upload, Scissors, X, FileVideo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,6 +25,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     randomOrder: true,
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -60,6 +61,40 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     toast({
       title: "Videos uploaded",
       description: `${newVideos.length} video(s) ready for clip generation`,
+    });
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFileUpload(files);
+    }
+  };
+
+  const removeVideo = (videoId: string) => {
+    const updatedVideos = sourceVideos.filter(video => video.id !== videoId);
+    onSourceVideosUpdate(updatedVideos);
+    
+    toast({
+      title: "Video removed",
+      description: "Video has been removed from the library",
     });
   };
 
@@ -174,14 +209,31 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
 
   return (
     <div className="space-y-4">
-      <div>
-        <Button
-          onClick={handleUploadClick}
-          className="w-full bg-blue-600 hover:bg-blue-700"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          Upload Videos
-        </Button>
+      {/* Drag & Drop Upload Area */}
+      <div
+        className={`relative border-2 border-dashed rounded-xl p-6 transition-all duration-300 cursor-pointer ${
+          isDragOver 
+            ? 'border-blue-400 bg-blue-500/10 scale-[1.02]' 
+            : 'border-slate-600/50 hover:border-slate-500/70'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={handleUploadClick}
+      >
+        <div className="text-center">
+          <div className={`w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center transition-colors ${
+            isDragOver ? 'bg-blue-500' : 'bg-slate-700'
+          }`}>
+            <Upload className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-white font-medium mb-1">
+            {isDragOver ? 'Drop videos here' : 'Upload Videos'}
+          </p>
+          <p className="text-xs text-slate-400">
+            Drag & drop or click to browse
+          </p>
+        </div>
         
         <input
           ref={fileInputRef}
@@ -193,6 +245,46 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         />
       </div>
 
+      {/* Source Videos List */}
+      {sourceVideos.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium text-white flex items-center justify-between">
+            <span>Source Videos</span>
+            <span className="bg-slate-700 text-slate-300 text-xs px-2 py-1 rounded-full">
+              {sourceVideos.length}
+            </span>
+          </h3>
+          
+          <div className="space-y-2 max-h-40 overflow-auto">
+            {sourceVideos.map((video) => (
+              <div key={video.id} className="bg-slate-700/50 rounded-lg p-3 flex items-center space-x-3 group">
+                <img
+                  src={video.thumbnail}
+                  alt={video.name}
+                  className="w-12 h-8 object-cover rounded bg-slate-600"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{video.name}</p>
+                  <p className="text-xs text-slate-400">{video.duration.toFixed(1)}s</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeVideo(video.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300 hover:bg-red-500/10 w-8 h-8 p-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Clip Generation Settings */}
       {sourceVideos.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-medium text-white">Generate Clips</h3>
@@ -248,20 +340,6 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
             <Scissors className="w-4 h-4 mr-2" />
             {isGenerating ? 'Generating...' : 'Generate Clips'}
           </Button>
-        </div>
-      )}
-
-      {sourceVideos.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-white">Source Videos</h3>
-          <div className="space-y-1">
-            {sourceVideos.map((video) => (
-              <div key={video.id} className="text-xs text-gray-300 p-2 bg-gray-700 rounded">
-                <div className="truncate">{video.name}</div>
-                <div className="text-gray-400">{video.duration.toFixed(1)}s</div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>

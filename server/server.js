@@ -1,3 +1,4 @@
+
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -72,6 +73,13 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
 
     console.log('Starting FFmpeg processing with', validClips.length, 'clips...');
 
+    // Standard video settings for uniform output
+    const videoSettings = {
+      width: 1920,
+      height: 1080,
+      fps: 30
+    };
+
     // If only one clip, use simpler approach
     if (validClips.length === 1) {
       const clip = validClips[0];
@@ -82,9 +90,14 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
         .duration(clip.duration)
         .videoCodec('libx264')
         .audioCodec('aac')
+        .size(`${videoSettings.width}x${videoSettings.height}`)
+        .fps(videoSettings.fps)
+        .aspect('16:9')
+        .autopad(true, 'black')
         .outputOptions([
           '-preset', 'fast',
-          '-movflags', '+faststart'
+          '-movflags', '+faststart',
+          '-pix_fmt', 'yuv420p'
         ])
         .output(outputPath)
         .on('start', (commandLine) => {
@@ -122,13 +135,13 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
         })
         .run();
     } else {
-      // Multiple clips - use concat protocol for better compatibility
+      // Multiple clips - use concat protocol with uniform scaling
       const tempDir = path.join(__dirname, 'temp');
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      // Create temporary processed clips
+      // Create temporary processed clips with uniform dimensions
       const tempClips = [];
       let processedCount = 0;
 
@@ -143,9 +156,14 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
             .duration(clip.duration)
             .videoCodec('libx264')
             .audioCodec('aac')
+            .size(`${videoSettings.width}x${videoSettings.height}`)
+            .fps(videoSettings.fps)
+            .aspect('16:9')
+            .autopad(true, 'black')
             .outputOptions([
               '-preset', 'fast',
-              '-f', 'mp4'
+              '-f', 'mp4',
+              '-pix_fmt', 'yuv420p'
             ])
             .output(tempClipPath)
             .on('end', () => {
@@ -177,7 +195,8 @@ app.post('/upload', upload.array('videos'), async (req, res) => {
           .audioCodec('aac')
           .outputOptions([
             '-preset', 'fast',
-            '-movflags', '+faststart'
+            '-movflags', '+faststart',
+            '-pix_fmt', 'yuv420p'
           ])
           .output(outputPath)
           .on('start', (commandLine) => {
