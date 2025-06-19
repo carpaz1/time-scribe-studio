@@ -37,10 +37,23 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   onDownloadClips,
   lastCompilationResult,
 }) => {
+  console.log('TimelineControls render:', { 
+    isCompiling, 
+    compilationProgress, 
+    compilationStage,
+    timelineClipsLength 
+  });
+
   const handleDownload = () => {
+    console.log('Download button clicked:', lastCompilationResult);
     if (lastCompilationResult?.downloadUrl) {
       window.open(`http://localhost:4000${lastCompilationResult.downloadUrl}`, '_blank');
     }
+  };
+
+  const handleCompileClick = () => {
+    console.log('Compile button clicked, clips:', timelineClipsLength);
+    onCompile();
   };
 
   return (
@@ -139,7 +152,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
 
       {/* COMPILE BUTTON - Made more prominent */}
       <Button
-        onClick={onCompile}
+        onClick={handleCompileClick}
         disabled={isCompiling || timelineClipsLength === 0}
         className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-10 px-6 text-base font-semibold"
       >
@@ -158,9 +171,9 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
         </Button>
       )}
 
-      {/* Enhanced Progress Indicator */}
+      {/* Enhanced Progress Indicator with Debug Info */}
       {isCompiling && (
-        <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[300px]">
+        <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[350px]">
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm text-slate-300 font-medium">
@@ -172,8 +185,9 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
               value={compilationProgress} 
               className="h-3 bg-slate-600"
             />
-            <div className="text-xs text-slate-400 mt-1">
-              Optimized GPU acceleration • Real-time progress
+            <div className="text-xs text-slate-400 mt-1 flex justify-between">
+              <span>GPU acceleration enabled</span>
+              <span>Debug: {compilationProgress.toFixed(1)}%</span>
             </div>
           </div>
         </div>
