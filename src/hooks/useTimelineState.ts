@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { VideoClip, SourceVideo } from '@/types/timeline';
 
 export const useTimelineState = (initialClips: VideoClip[] = []) => {
@@ -14,17 +14,24 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   const [isCompiling, setIsCompiling] = useState(false);
   const [timelineScrollOffset, setTimelineScrollOffset] = useState(0);
 
-  // Calculate total timeline duration
-  useEffect(() => {
+  // Calculate total timeline duration with memoization
+  const calculatedDuration = useMemo(() => {
     if (timelineClips.length > 0) {
       const maxEnd = Math.max(...timelineClips.map(clip => clip.position + clip.duration));
-      setTotalDuration(Math.max(maxEnd + 10, 60));
-    } else {
-      setTotalDuration(60);
+      return Math.max(maxEnd + 10, 60);
     }
+    return 60;
   }, [timelineClips]);
 
+  useEffect(() => {
+    if (calculatedDuration !== totalDuration) {
+      console.log('useTimelineState: Updating total duration from', totalDuration, 'to', calculatedDuration);
+      setTotalDuration(calculatedDuration);
+    }
+  }, [calculatedDuration, totalDuration]);
+
   const handleClipAdd = useCallback((clip: VideoClip) => {
+    console.log('useTimelineState: Adding clip to timeline:', clip.name);
     const newClip = {
       ...clip,
       position: timelineClips.length > 0 
@@ -35,10 +42,12 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   }, [timelineClips]);
 
   const handleClipRemove = useCallback((clipId: string) => {
+    console.log('useTimelineState: Removing clip from timeline:', clipId);
     setTimelineClips(prev => prev.filter(clip => clip.id !== clipId));
   }, []);
 
   const handleClipReorder = useCallback((draggedClipId: string, targetPosition: number) => {
+    console.log('useTimelineState: Reordering clip:', draggedClipId, 'to position:', targetPosition);
     setTimelineClips(prev => {
       const updated = prev.map(clip => 
         clip.id === draggedClipId 
@@ -50,6 +59,7 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   }, []);
 
   const handleReset = useCallback(() => {
+    console.log('useTimelineState: Resetting timeline');
     setTimelineClips([]);
     setPlayheadPosition(0);
     setIsPlaying(false);
@@ -57,6 +67,7 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   }, []);
 
   const handleClearTimeline = useCallback(() => {
+    console.log('useTimelineState: Clearing timeline');
     setTimelineClips([]);
     setPlayheadPosition(0);
     setIsPlaying(false);
@@ -75,6 +86,7 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
       throw new Error('All clips are already on the timeline');
     }
 
+    console.log('useTimelineState: Adding', availableClips.length, 'clips to timeline');
     const shuffledClips = [...availableClips].sort(() => Math.random() - 0.5);
     
     // Calculate starting position (end of current timeline)

@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { VideoClip } from '@/types/timeline';
 
 interface VideoPlayerProps {
@@ -21,53 +21,63 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [currentClip, setCurrentClip] = useState<VideoClip | null>(null);
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const currentBlobUrlRef = useRef<string>('');
+
+  // Cleanup function for blob URLs
+  const cleanupBlobUrl = useCallback(() => {
+    if (currentBlobUrlRef.current) {
+      console.log('Cleaning up blob URL:', currentBlobUrlRef.current);
+      URL.revokeObjectURL(currentBlobUrlRef.current);
+      currentBlobUrlRef.current = '';
+    }
+  }, []);
 
   // Find the current clip based on playhead position
   useEffect(() => {
-    console.log('Checking for active clip at time:', currentTime, 'from clips:', clips.length);
+    console.log('VideoPlayer: Checking for active clip at time:', currentTime, 'from clips:', clips.length);
     
     const activeClip = clips.find(clip => 
       currentTime >= clip.position && currentTime < clip.position + clip.duration
     );
     
-    if (activeClip && activeClip !== currentClip) {
-      console.log('Switching to clip:', activeClip.name);
+    if (activeClip && activeClip.id !== currentClip?.id) {
+      console.log('VideoPlayer: Switching to clip:', activeClip.name, 'at position:', activeClip.position);
       setCurrentClip(activeClip);
       
       // Clean up previous URL
-      if (videoSrc) {
-        URL.revokeObjectURL(videoSrc);
-      }
+      cleanupBlobUrl();
       
       try {
         const src = URL.createObjectURL(activeClip.sourceFile);
+        currentBlobUrlRef.current = src;
         setVideoSrc(src);
         setError('');
-        console.log('Created video src:', src);
+        console.log('VideoPlayer: Created new video src for clip:', activeClip.name);
       } catch (err) {
-        console.error('Error creating video source:', err);
+        console.error('VideoPlayer: Error creating video source:', err);
         setError('Failed to load video');
       }
     } else if (!activeClip && currentClip) {
-      console.log('No active clip at current time');
+      console.log('VideoPlayer: No active clip at current time, clearing player');
       setCurrentClip(null);
-      if (videoSrc) {
-        URL.revokeObjectURL(videoSrc);
-      }
+      cleanupBlobUrl();
       setVideoSrc('');
       setError('');
     }
-  }, [currentTime, clips, currentClip]);
+  }, [currentTime, clips, currentClip?.id, cleanupBlobUrl]);
 
-  // Update video time based on clip position
+  // Update video time based on clip position with better calculation
   useEffect(() => {
     if (videoRef.current && currentClip && videoSrc) {
-      const timeInClip = currentTime - currentClip.position;
-      const videoTime = currentClip.startTime + timeInClip;
+      const timeInClip = Math.max(0, currentTime - currentClip.position);
+      const videoTime = Math.max(0, currentClip.startTime + timeInClip);
       
-      console.log('Setting video time to:', videoTime, 'for clip time:', timeInClip);
+      console.log('VideoPlayer: Setting video time to:', videoTime.toFixed(2), 
+                  'for clip time:', timeInClip.toFixed(2), 
+                  'clip start:', currentClip.startTime);
       
-      if (Math.abs(videoRef.current.currentTime - videoTime) > 0.1) {
+      // Only update if the difference is significant to avoid constant seeking
+      if (Math.abs(videoRef.current.currentTime - videoTime) > 0.2) {
         videoRef.current.currentTime = videoTime;
       }
     }
@@ -75,19 +85,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Handle play/pause
   useEffect(() => {
-    if (videoRef.current && videoSrc) {
-      if (isPlaying && currentClip) {
-        console.log('Playing video');
+    if (videoRef.current && videoSrc && currentClip) {
+      if (isPlaying) {
+        console.log('VideoPlayer: Playing video');
         videoRef.current.play().catch(err => {
-          console.error('Play error:', err);
+          console.error('VideoPlayer: Play error:', err);
           setError('Failed to play video');
         });
       } else {
-        console.log('Pausing video');
+        console.log('VideoPlayer: Pausing video');
         videoRef.current.pause();
       }
     }
   }, [isPlaying, currentClip, videoSrc]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupBlobUrl();
+    };
+  }, [cleanupBlobUrl]);
 
   const handleTimeUpdate = () => {
     if (videoRef.current && currentClip && isPlaying) {
@@ -98,13 +115,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   };
 
   const handleLoadedMetadata = () => {
-    console.log('Video metadata loaded');
+    console.log('VideoPlayer: Video metadata loaded for clip:', currentClip?.name);
     onLoadedMetadata?.();
   };
 
   const handleError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-    console.error('Video error:', e);
-    setError('Video playback error');
+    console.error('VideoPlayer: Video playback error:', e);
+    setError('Video playback error - file may be corrupted or unsupported format');
   };
 
   return (
@@ -113,6 +130,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         <div className="text-red-400 text-center">
           <div className="text-4xl mb-2">⚠️</div>
           <p>{error}</p>
+          <p className="text-sm text-gray-500 mt-2">Check console for details</p>
         </div>
       ) : videoSrc ? (
         <video
@@ -124,6 +142,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           onError={handleError}
           muted
           playsInline
+          preload="metadata"
         />
       ) : (
         <div className="text-gray-400 text-center">

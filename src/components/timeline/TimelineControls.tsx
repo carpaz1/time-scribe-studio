@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -21,7 +21,7 @@ interface TimelineControlsProps {
   lastCompilationResult?: { downloadUrl?: string; outputFile?: string };
 }
 
-const TimelineControls: React.FC<TimelineControlsProps> = ({
+const TimelineControls: React.FC<TimelineControlsProps> = memo(({
   isPlaying,
   isCompiling,
   compilationProgress = 0,
@@ -37,22 +37,25 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
   onDownloadClips,
   lastCompilationResult,
 }) => {
-  console.log('TimelineControls render:', { 
-    isCompiling, 
-    compilationProgress, 
-    compilationStage,
-    timelineClipsLength 
-  });
+  // Only log when actually compiling or when significant state changes
+  if (isCompiling || compilationProgress > 0) {
+    console.log('TimelineControls: Compilation state:', { 
+      isCompiling, 
+      compilationProgress: compilationProgress.toFixed(1), 
+      compilationStage,
+      timelineClipsLength 
+    });
+  }
 
   const handleDownload = () => {
-    console.log('Download button clicked:', lastCompilationResult);
+    console.log('TimelineControls: Download button clicked:', lastCompilationResult);
     if (lastCompilationResult?.downloadUrl) {
       window.open(`http://localhost:4000${lastCompilationResult.downloadUrl}`, '_blank');
     }
   };
 
   const handleCompileClick = () => {
-    console.log('Compile button clicked, clips:', timelineClipsLength);
+    console.log('TimelineControls: Compile button clicked, clips:', timelineClipsLength);
     onCompile();
   };
 
@@ -187,13 +190,15 @@ const TimelineControls: React.FC<TimelineControlsProps> = ({
             />
             <div className="text-xs text-slate-400 mt-1 flex justify-between">
               <span>GPU acceleration enabled</span>
-              <span>Debug: {compilationProgress.toFixed(1)}%</span>
+              <span>Progress: {compilationProgress.toFixed(1)}%</span>
             </div>
           </div>
         </div>
       )}
     </div>
   );
-};
+});
+
+TimelineControls.displayName = 'TimelineControls';
 
 export default TimelineControls;
