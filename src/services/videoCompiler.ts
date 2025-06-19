@@ -1,3 +1,4 @@
+
 import { VideoClip, TimelineConfig, CompileRequest } from '@/types/timeline';
 
 export class VideoCompilerService {
@@ -17,10 +18,22 @@ export class VideoCompilerService {
       throw new Error('No clips to compile');
     }
 
-    // Test server connectivity first
+    // Test server connectivity first with detailed logging
     console.log('Testing server connectivity...');
     try {
-      const healthResponse = await fetch('http://localhost:4000/health');
+      console.log('Making health check request to: http://localhost:4000/health');
+      const healthResponse = await fetch('http://localhost:4000/health', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      console.log('Health check response received:', {
+        status: healthResponse.status,
+        statusText: healthResponse.statusText,
+        ok: healthResponse.ok
+      });
+      
       if (healthResponse.ok) {
         const healthData = await healthResponse.json();
         console.log('Server health check passed:', healthData);
@@ -29,7 +42,9 @@ export class VideoCompilerService {
         throw new Error('Backend server is not responding. Please make sure start.bat is running.');
       }
     } catch (connectError) {
-      console.error('Cannot connect to server:', connectError);
+      console.error('Cannot connect to server - detailed error:', connectError);
+      console.error('Error name:', connectError.name);
+      console.error('Error message:', connectError.message);
       throw new Error('Cannot connect to backend server. Please make sure start.bat is running and the server is on port 4000.');
     }
 
@@ -91,6 +106,8 @@ export class VideoCompilerService {
 
     try {
       console.log('Making fetch request to server...');
+      console.log('Request URL: http://localhost:4000/upload');
+      console.log('Request method: POST');
       console.log('FormData contents:');
       for (let [key, value] of formData.entries()) {
         if (value instanceof File) {
@@ -100,14 +117,25 @@ export class VideoCompilerService {
         }
       }
 
+      console.log('About to send fetch request...');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.error('Request timeout after 30 seconds');
+        controller.abort();
+      }, 30000);
+
       const response = await fetch('http://localhost:4000/upload', {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+      console.log('Fetch request completed!');
       console.log('Response received from server:');
       console.log('- Status:', response.status);
       console.log('- Status Text:', response.statusText);
+      console.log('- OK:', response.ok);
       console.log('- Headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
@@ -121,8 +149,9 @@ export class VideoCompilerService {
         throw new Error(`Server error: ${response.status} - ${errorText}`);
       }
 
+      console.log('Parsing response JSON...');
       const result = await response.json();
-      console.log('Server response parsed:', result);
+      console.log('Server response parsed successfully:', result);
       
       // Check if server is processing (no jobId means immediate response)
       if (result.jobId && onProgress) {
@@ -159,11 +188,18 @@ export class VideoCompilerService {
       console.error('=== COMPILATION ERROR ===');
       console.error('Error details:', error);
       console.error('Error type:', typeof error);
+      console.error('Error name:', error?.name);
+      console.error('Error message:', error?.message);
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Cannot connect to local server. Please make sure the backend server is running (start.bat).');
+        throw new Error('Network error: Cannot connect to local server. Please make sure the backend server is running (start.bat).');
       }
+      
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout: Server took too long to respond.');
+      }
+      
       throw error;
     }
   }
