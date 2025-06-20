@@ -63,9 +63,8 @@ class GPUAccelerator {
           console.log('GPU Features:', Array.from(this.adapter.features));
           console.log('GPU Limits:', this.adapter.limits);
           
-          this.device = await this.adapter.requestDevice({
-            requiredFeatures: Array.from(this.adapter.features).slice(0, 3), // Use available features
-          });
+          // Fixed: Remove the invalid argument
+          this.device = await this.adapter.requestDevice();
           
           await this.setupComputePipeline();
           console.log('GPUAccelerator: WebGPU initialized successfully with compute shaders');
@@ -176,17 +175,22 @@ class GPUAccelerator {
   }
 
   private async processWithWebGPU(videoElement: HTMLVideoElement, width: number, height: number): Promise<ImageData> {
-    // Create textures and buffers for GPU processing
+    // Create textures and buffers for GPU processing - using fallback constants
+    const TEXTURE_BINDING = 0x04;
+    const COPY_DST = 0x02;
+    const STORAGE_BINDING = 0x08;
+    const COPY_SRC = 0x01;
+    
     const inputTexture = this.device!.createTexture({
       size: { width, height },
       format: 'rgba8unorm',
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+      usage: TEXTURE_BINDING | COPY_DST
     });
 
     const outputTexture = this.device!.createTexture({
       size: { width, height },
       format: 'rgba8unorm',
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
+      usage: STORAGE_BINDING | COPY_SRC
     });
 
     // Process with compute shader

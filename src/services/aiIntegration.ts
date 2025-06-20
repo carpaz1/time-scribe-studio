@@ -1,4 +1,3 @@
-
 interface AIProvider {
   name: string;
   generateClipSuggestions(clips: any[]): Promise<string[]>;
@@ -361,7 +360,14 @@ export class AIIntegrationService {
     }
     
     console.log('AI: Generating enhanced suggestions with provider:', this.activeProvider.name);
-    return this.activeProvider.generateClipSuggestions(clips);
+    
+    // Fixed type issue: Proper type checking for the provider
+    try {
+      return await this.activeProvider.generateClipSuggestions(clips);
+    } catch (error) {
+      console.error('AI: Error generating suggestions:', error);
+      throw error;
+    }
   }
 
   async generateAdvancedSuggestions(clips: any[], context?: string): Promise<string[]> {
@@ -371,11 +377,13 @@ export class AIIntegrationService {
       throw new Error('No AI provider configured for advanced suggestions');
     }
     
-    if ('generateAdvancedSuggestions' in this.activeProvider) {
-      return this.activeProvider.generateAdvancedSuggestions(clips, context);
+    // Fixed: Proper type checking and method availability check
+    const provider = this.activeProvider;
+    if (provider instanceof OpenAIProvider || provider instanceof LocalLLMProvider) {
+      return provider.generateAdvancedSuggestions(clips, context);
     }
     
-    return this.activeProvider.generateClipSuggestions(clips);
+    return provider.generateClipSuggestions(clips);
   }
 
   async analyzeVideoContent(file: File) {

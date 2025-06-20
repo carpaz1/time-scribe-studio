@@ -1,13 +1,14 @@
 
 /// <reference types="vite/client" />
 
-// WebGPU type definitions for better browser support
+// Enhanced WebGPU type definitions for better browser support
 interface GPUDevice {
   createBuffer(descriptor: any): any;
   createTexture(descriptor: any): any;
-  createShaderModule(descriptor: any): any;
+  createShaderModule(descriptor: { code: string }): any;
   createRenderPipeline(descriptor: any): any;
   createComputePipeline(descriptor: any): any;
+  createCommandEncoder(): any;
   queue: {
     submit(commandBuffers: any[]): void;
     writeBuffer(buffer: any, bufferOffset: number, data: any): void;
@@ -15,7 +16,7 @@ interface GPUDevice {
 }
 
 interface GPUAdapter {
-  requestDevice(): Promise<GPUDevice>;
+  requestDevice(descriptor?: { requiredFeatures?: string[] }): Promise<GPUDevice>;
   features: Set<string>;
   limits: Record<string, number>;
 }
@@ -26,6 +27,15 @@ interface GPU {
     forceFallbackAdapter?: boolean;
   }): Promise<GPUAdapter | null>;
 }
+
+// WebGPU constants
+declare const GPUTextureUsage: {
+  COPY_SRC: number;
+  COPY_DST: number;
+  TEXTURE_BINDING: number;
+  STORAGE_BINDING: number;
+  RENDER_ATTACHMENT: number;
+};
 
 declare global {
   interface Navigator {
