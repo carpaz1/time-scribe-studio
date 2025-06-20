@@ -35,3 +35,4 @@ export interface CompileRequest {
   config: TimelineConfig;
   clips: VideoClip[];
 }
+

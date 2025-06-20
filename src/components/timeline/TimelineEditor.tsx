@@ -1,7 +1,9 @@
+
 import React, { useState, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { toast } from "@/hooks/use-toast";
+import { Toaster } from "@/components/ui/toaster";
 import { useProgressTracker } from '@/hooks/useProgressTracker';
 import { VideoClip, CompileRequest } from '@/types/timeline';
 import { VideoCompilerService } from '@/services/videoCompiler';
@@ -15,6 +17,7 @@ import TimelineControls from './TimelineControls';
 import StatusBar from './StatusBar';
 import SettingsPanel from './SettingsPanel';
 import EditorHeader from './EditorHeader';
+import VideoPreview from './VideoPreview';
 
 interface TimelineEditorProps {
   onExport?: (data: CompileRequest) => void;
@@ -36,6 +39,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [lastCompilationResult, setLastCompilationResult] = useState<{ downloadUrl?: string; outputFile?: string } | undefined>(undefined);
   const [showVideoPreview, setShowVideoPreview] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [compilationProgress, setCompilationProgress] = useState(0);
+  const [compilationStage, setCompilationStage] = useState('');
 
   const { progress, startProgress, updateProgress, completeProgress, resetProgress } = useProgressTracker();
 
@@ -87,7 +93,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     setTimelineClips(prevClips => [...prevClips, newClip]);
   };
 
-  const handleRemoveClip = (id: number) => {
+  const handleRemoveClip = (id: string) => {
     setClips(prevClips => prevClips.filter(clip => clip.id !== id));
   };
 
@@ -105,7 +111,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     setDraggedClip(null);
   };
 
-  const handleClipRemove = (id: number) => {
+  const handleClipRemove = (id: string) => {
     setTimelineClips(prevClips => prevClips.filter(clip => clip.id !== id));
   };
 
@@ -176,20 +182,38 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       let currentClipCount = 0;
       for (const video of videosToProcess) {
         for (let i = 0; i < config.numClips; i++) {
-          const startTime = Math.random() * (video.duration - config.clipDuration);
-          const clip: VideoClip = {
-            id: nextClipId.current++,
-            name: `Clip ${nextClipId.current - 1} from ${video.name}`,
-            sourceFile: video,
-            startTime: startTime,
-            duration: config.clipDuration,
-            position: 0,
-          };
-          setClips(prevClips => [...prevClips, clip]);
-          currentClipCount++;
-          const progressValue = (currentClipCount / totalClips) * 100;
-          setGenerationProgress(progressValue);
-          updateProgress(currentClipCount, `Generating clip ${currentClipCount}/${totalClips}`);
+          // Create a temporary video element to get duration
+          const videoElement = document.createElement('video');
+          const objectUrl = URL.createObjectURL(video);
+          videoElement.src = objectUrl;
+          
+          await new Promise((resolve) => {
+            videoElement.addEventListener('loadedmetadata', () => {
+              const videoDuration = videoElement.duration;
+              const startTime = Math.random() * Math.max(0, videoDuration - config.clipDuration);
+              
+              const clip: VideoClip = {
+                id: nextClipId.current.toString(),
+                name: `Clip ${nextClipId.current} from ${video.name}`,
+                sourceFile: video,
+                startTime: startTime,
+                duration: config.clipDuration,
+                position: 0,
+                thumbnail: '',
+              };
+              
+              nextClipId.current++;
+              setClips(prevClips => [...prevClips, clip]);
+              currentClipCount++;
+              const progressValue = (currentClipCount / totalClips) * 100;
+              setGenerationProgress(progressValue);
+              updateProgress(currentClipCount, `Generating clip ${currentClipCount}/${totalClips}`);
+              
+              URL.revokeObjectURL(objectUrl);
+              resolve(null);
+            });
+          });
+          
           await new Promise(resolve => setTimeout(resolve, 50));
         }
       }
@@ -286,7 +310,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
 
       console.log('TimelineEditor: Compilation completed successfully:', result);
       setLastCompilationResult(result);
-      setShowVideoPreview(true); // Auto-show preview when compilation completes
+      setShowVideoPreview(true);
       
       toast({
         title: "Compilation Complete!",
@@ -307,145 +331,181 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800">
-      {/* Header */}
-      <EditorHeader />
-      
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
-          <SidebarSection
-            title="1. Upload Videos"
-            isActive={activeStep === 'upload'}
-            onToggle={() => setActiveStep(activeStep === 'upload' ? null : 'upload')}
-          >
-            <VideoUploadStep
-              onFilesSelected={handleFilesSelected}
-              selectedFiles={sourceVideos}
-              onRemoveFile={handleRemoveFile}
-              onClearAll={handleClearAll}
-            />
-          </SidebarSection>
+    <DndProvider backend={HTML5Backend}>
+      <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800">
+        {/* Header */}
+        <EditorHeader
+          isPlaying={isPlaying}
+          isCompiling={isCompiling}
+          compilationProgress={compilationProgress}
+          compilationStage={compilationStage}
+          timelineClipsLength={timelineClips.length}
+          onTogglePlayback={togglePlayback}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onReset={handleReset}
+          onClearTimeline={handleClearTimeline}
+          onExportJSON={handleExportJSON}
+          onCompile={handleCompile}
+          onDownloadClips={handleDownloadClips}
+          onOpenSettings={() => setShowSettings(true)}
+          lastCompilationResult={lastCompilationResult}
+          showVideoPreview={showVideoPreview}
+          onCloseVideoPreview={() => setShowVideoPreview(!showVideoPreview)}
+        />
+        
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar */}
+          <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
+            <SidebarSection
+              title="1. Upload Videos"
+              isActive={activeStep === 'upload'}
+              onToggle={() => setActiveStep(activeStep === 'upload' ? null : 'upload')}
+            >
+              <VideoUploadStep
+                sourceVideos={sourceVideos}
+                onVideoUpload={handleFilesSelected}
+                onBulkUpload={handleFilesSelected}
+                onDirectRandomize={handleRandomizeAll}
+              />
+            </SidebarSection>
 
-          <SidebarSection
-            title="2. Configure"
-            isActive={activeStep === 'configure'}
-            onToggle={() => setActiveStep(activeStep === 'configure' ? null : 'configure')}
-          >
-            <ConfigurationStep
-              config={{
-                numClips: 3,
-                clipDuration: 5,
-                randomSelection: true,
-                videoSelectionMode: 'all' as const,
-                numVideos: Math.min(20, sourceVideos.length),
-              }}
-              sourceVideosCount={sourceVideos.length}
-              onConfigChange={() => {}}
-            />
-          </SidebarSection>
+            <SidebarSection
+              title="2. Configure"
+              isActive={activeStep === 'configure'}
+              onToggle={() => setActiveStep(activeStep === 'configure' ? null : 'configure')}
+            >
+              <ConfigurationStep
+                config={{
+                  numClips: 3,
+                  clipDuration: 5,
+                  randomSelection: true,
+                  videoSelectionMode: 'all' as const,
+                  numVideos: Math.min(20, sourceVideos.length),
+                }}
+                sourceVideosCount={sourceVideos.length}
+                onConfigChange={() => {}}
+              />
+            </SidebarSection>
 
-          <SidebarSection
-            title="3. Generate & Randomize"
-            isActive={activeStep === 'randomize'}
-            onToggle={() => setActiveStep(activeStep === 'randomize' ? null : 'randomize')}
-          >
-            <RandomizeStep
-              onGenerateClips={handleGenerateClips}
-              onRandomizeAll={handleRandomizeAll}
-              onRandomizeTimed={handleRandomizeTimed}
-              onCancelProcessing={handleCancelProcessing}
-              isGenerating={isGenerating}
-              generationProgress={generationProgress}
-              config={{
-                numClips: 3,
-                clipDuration: 5,
-                randomSelection: true,
-                videoSelectionMode: 'all' as const,
-                numVideos: Math.min(20, sourceVideos.length),
-              }}
-            />
-          </SidebarSection>
+            <SidebarSection
+              title="3. Generate & Randomize"
+              isActive={activeStep === 'randomize'}
+              onToggle={() => setActiveStep(activeStep === 'randomize' ? null : 'randomize')}
+            >
+              <RandomizeStep
+                onGenerateClips={handleGenerateClips}
+                onRandomizeAll={handleRandomizeAll}
+                onRandomizeTimed={handleRandomizeTimed}
+                onCancelProcessing={handleCancelProcessing}
+                isGenerating={isGenerating}
+                generationProgress={generationProgress}
+                config={{
+                  numClips: 3,
+                  clipDuration: 5,
+                  randomSelection: true,
+                  videoSelectionMode: 'all' as const,
+                  numVideos: Math.min(20, sourceVideos.length),
+                }}
+              />
+            </SidebarSection>
 
-          <ClipLibrary
-            clips={clips}
-            onAddToTimeline={handleAddToTimeline}
-            onRemoveClip={handleRemoveClip}
-            onClearLibrary={handleClearLibrary}
-            isGenerating={isGenerating}
-            generationProgress={generationProgress}
-            onCancelProcessing={handleCancelProcessing}
-          />
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Video Player */}
-          <div className="h-1/2 border-b border-slate-700/50">
-            <VideoPlayerSection
+            <ClipLibrary
+              clips={clips}
+              sourceVideos={[]}
               timelineClips={timelineClips}
-              playheadPosition={playheadPosition}
-              isPlaying={isPlaying}
-              onTimeUpdate={setPlayheadPosition}
+              onClipAdd={handleAddToTimeline}
+              onClipsUpdate={setClips}
+              onSourceVideosUpdate={() => {}}
+              onClipsGenerated={setClips}
+              onRandomizeAll={handleRandomizeAll}
+              onVideoUpload={handleFilesSelected}
+              onBulkUpload={handleFilesSelected}
+              progressTracker={progress}
             />
           </div>
-          
-          {/* Timeline */}
-          <div className="flex-1 flex flex-col min-h-0">
-            <TimelineMain
-              clips={timelineClips}
-              totalDuration={totalDuration}
-              zoom={zoom}
-              playheadPosition={playheadPosition}
-              isDragging={isDragging}
-              draggedClip={draggedClip}
-              onClipDragStart={handleClipDragStart}
-              onClipDragEnd={handleClipDragEnd}
-              onClipRemove={handleClipRemove}
-              onPlayheadMove={setPlayheadPosition}
-            />
-            
-            {/* Controls */}
-            <div className="border-t border-slate-700/50 bg-slate-800/30 backdrop-blur-sm p-4">
-              <TimelineControls
+
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Video Player */}
+            <div className="h-1/2 border-b border-slate-700/50">
+              <VideoPlayerSection
+                timelineClips={timelineClips}
+                playheadPosition={playheadPosition}
                 isPlaying={isPlaying}
-                isCompiling={isCompiling}
-                compilationProgress={compilationProgress}
-                compilationStage={compilationStage}
-                timelineClipsLength={timelineClips.length}
-                onTogglePlayback={togglePlayback}
-                onZoomIn={handleZoomIn}
-                onZoomOut={handleZoomOut}
-                onReset={handleReset}
-                onClearTimeline={handleClearTimeline}
-                onExportJSON={handleExportJSON}
-                onCompile={handleCompile}
-                onDownloadClips={handleDownloadClips}
-                onOpenSettings={() => setShowSettings(true)}
-                lastCompilationResult={lastCompilationResult}
-                showVideoPreview={showVideoPreview}
-                onCloseVideoPreview={() => setShowVideoPreview(!showVideoPreview)}
+                onTimeUpdate={setPlayheadPosition}
               />
+            </div>
+            
+            {/* Timeline */}
+            <div className="flex-1 flex flex-col min-h-0">
+              <TimelineMain
+                clips={timelineClips}
+                totalDuration={totalDuration}
+                zoom={zoom}
+                playheadPosition={playheadPosition}
+                isDragging={isDragging}
+                draggedClip={draggedClip}
+                onClipDragStart={handleClipDragStart}
+                onClipDragEnd={handleClipDragEnd}
+                onClipRemove={handleClipRemove}
+                onPlayheadMove={setPlayheadPosition}
+              />
+              
+              {/* Controls */}
+              <div className="border-t border-slate-700/50 bg-slate-800/30 backdrop-blur-sm p-4">
+                <TimelineControls
+                  isPlaying={isPlaying}
+                  isCompiling={isCompiling}
+                  compilationProgress={compilationProgress}
+                  compilationStage={compilationStage}
+                  timelineClipsLength={timelineClips.length}
+                  onTogglePlayback={togglePlayback}
+                  onZoomIn={handleZoomIn}
+                  onZoomOut={handleZoomOut}
+                  onReset={handleReset}
+                  onClearTimeline={handleClearTimeline}
+                  onExportJSON={handleExportJSON}
+                  onCompile={handleCompile}
+                  onDownloadClips={handleDownloadClips}
+                  onOpenSettings={() => setShowSettings(true)}
+                  lastCompilationResult={lastCompilationResult}
+                  showVideoPreview={showVideoPreview}
+                  onCloseVideoPreview={() => setShowVideoPreview(!showVideoPreview)}
+                />
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Status Bar */}
+        <StatusBar
+          isActive={progress.isActive}
+          current={progress.current}
+          total={progress.total}
+          message={progress.message}
+        />
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <SettingsPanel
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+
+        {/* Video Preview */}
+        {showVideoPreview && lastCompilationResult && (
+          <VideoPreview
+            downloadUrl={lastCompilationResult.downloadUrl || ''}
+            outputFile={lastCompilationResult.outputFile || ''}
+            onClose={() => setShowVideoPreview(false)}
+          />
+        )}
+
+        <Toaster />
       </div>
-
-      {/* Status Bar */}
-      <StatusBar
-        isActive={progress.isActive}
-        current={progress.current}
-        total={progress.total}
-        message={progress.message}
-      />
-
-      {/* Settings Panel */}
-      {showSettings && (
-        <SettingsPanel onClose={() => setShowSettings(false)} />
-      )}
-
-      <Toaster />
-    </div>
+    </DndProvider>
   );
 };
 
@@ -482,3 +542,4 @@ const SidebarSection: React.FC<SidebarSectionProps> = ({ title, children, isActi
     </div>
   );
 };
+
