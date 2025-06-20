@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Settings, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -98,7 +97,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     });
   };
 
-  const generateClips = async (config: { numClips: number; clipDuration: number }) => {
+  const generateClips = async (config: { numClips: number; clipDuration: number; videoSelectionMode: 'all' | 'specific'; numVideos: number }) => {
     if (sourceVideos.length === 0) {
       toast({
         title: "No videos uploaded",
@@ -114,9 +113,17 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     try {
       const newClips: VideoClip[] = [];
       
-      for (let i = 0; i < sourceVideos.length; i++) {
-        const sourceVideo = sourceVideos[i];
-        setGenerationProgress(((i + 1) / sourceVideos.length) * 100);
+      // Determine which videos to process
+      let videosToProcess = sourceVideos;
+      if (config.videoSelectionMode === 'specific') {
+        // Randomly select the specified number of videos
+        const shuffled = [...sourceVideos].sort(() => Math.random() - 0.5);
+        videosToProcess = shuffled.slice(0, config.numVideos);
+      }
+      
+      for (let i = 0; i < videosToProcess.length; i++) {
+        const sourceVideo = videosToProcess[i];
+        setGenerationProgress(((i + 1) / videosToProcess.length) * 100);
         
         const duration = sourceVideo.duration;
         
@@ -151,9 +158,13 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
       onClipsUpdate([...clips, ...newClips]);
       onClipsGenerated(newClips);
       
+      const processedVideosText = config.videoSelectionMode === 'all' 
+        ? `all ${videosToProcess.length} videos` 
+        : `${videosToProcess.length} selected videos`;
+      
       toast({
         title: "Clips generated successfully!",
-        description: `Created ${newClips.length} clips from ${sourceVideos.length} videos`,
+        description: `Created ${newClips.length} clips from ${processedVideosText}`,
       });
     } catch (error) {
       console.error('Error generating clips:', error);

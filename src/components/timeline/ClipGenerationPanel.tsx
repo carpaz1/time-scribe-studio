@@ -6,11 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ClipGenerationConfig {
   numClips: number;
   clipDuration: number;
   randomSelection: boolean;
+  videoSelectionMode: 'all' | 'specific';
+  numVideos: number;
 }
 
 interface ClipGenerationPanelProps {
@@ -34,6 +37,8 @@ const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
     numClips: 3,
     clipDuration: 5,
     randomSelection: true,
+    videoSelectionMode: 'all',
+    numVideos: Math.min(20, sourceVideosCount),
   });
 
   const handleGenerateClips = () => {
@@ -55,6 +60,46 @@ const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
         {/* Configuration Options */}
         <Card className="bg-slate-700/30 border-slate-600/50">
           <CardContent className="p-3 space-y-3">
+            <div>
+              <Label htmlFor="videoSelection" className="text-xs text-gray-300">
+                Video Selection
+              </Label>
+              <Select 
+                value={config.videoSelectionMode} 
+                onValueChange={(value: 'all' | 'specific') => 
+                  setConfig(prev => ({ ...prev, videoSelectionMode: value }))
+                }
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All videos ({sourceVideosCount})</SelectItem>
+                  <SelectItem value="specific">Specific number of videos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {config.videoSelectionMode === 'specific' && (
+              <div>
+                <Label htmlFor="numVideos" className="text-xs text-gray-300">
+                  Number of Videos to Process
+                </Label>
+                <Input
+                  id="numVideos"
+                  type="number"
+                  min="1"
+                  max={sourceVideosCount}
+                  value={config.numVideos}
+                  onChange={(e) => setConfig(prev => ({ 
+                    ...prev, 
+                    numVideos: Math.min(Number(e.target.value), sourceVideosCount) 
+                  }))}
+                  className="h-8 text-sm"
+                />
+              </div>
+            )}
+            
             <div>
               <Label htmlFor="numClips" className="text-xs text-gray-300">
                 Clips per Video
