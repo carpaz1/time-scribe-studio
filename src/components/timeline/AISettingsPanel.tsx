@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Brain, Key, Server, CheckCircle, AlertCircle, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AIIntegrationService from '@/services/aiIntegration';
+import OllamaAutomationService from '@/services/ollamaAutomation';
 
 const AISettingsPanel: React.FC = () => {
   const [openaiKey, setOpenaiKey] = useState('');
@@ -20,6 +20,7 @@ const AISettingsPanel: React.FC = () => {
   const [openaiStatus, setOpenaiStatus] = useState<'none' | 'success' | 'error'>('none');
   const [ollamaStatus, setOllamaStatus] = useState<'none' | 'success' | 'error'>('none');
   const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+  const [ollamaAutoStatus, setOllamaAutoStatus] = useState<string>('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -159,6 +160,34 @@ const AISettingsPanel: React.FC = () => {
     }
   };
 
+  const checkOllamaAuto = async () => {
+    setOllamaAutoStatus('Checking Ollama status...');
+    
+    try {
+      const { default: OllamaAutomationService } = await import('@/services/ollamaAutomation');
+      const ollama = OllamaAutomationService.getInstance();
+      
+      const status = await ollama.checkStatus();
+      
+      if (status.isRunning) {
+        setOllamaAutoStatus(`✅ Ollama is running with ${status.models.length} models`);
+        setOllamaStatus('success');
+      } else {
+        setOllamaAutoStatus('❌ Ollama is not running');
+        setOllamaStatus('error');
+      }
+    } catch (error) {
+      setOllamaAutoStatus('❌ Failed to check Ollama status');
+      setOllamaStatus('error');
+    }
+  };
+
+  const getOllamaInstructions = () => {
+    const { default: OllamaAutomationService } = require('@/services/ollamaAutomation');
+    const ollama = OllamaAutomationService.getInstance();
+    return ollama.getStartupInstructions();
+  };
+
   const copyOllamaCommand = () => {
     navigator.clipboard.writeText('ollama serve');
     toast({
@@ -187,17 +216,120 @@ const AISettingsPanel: React.FC = () => {
         </Alert>
       )}
 
-      <Tabs defaultValue="openai" className="w-full">
+      <Tabs defaultValue="ollama" className="w-full">
         <TabsList className="grid w-full grid-cols-2 bg-slate-700">
+          <TabsTrigger value="ollama" className="flex items-center">
+            <Server className="w-4 h-4 mr-2" />
+            Local Ollama (Recommended)
+          </TabsTrigger>
           <TabsTrigger value="openai" className="flex items-center">
             <Key className="w-4 h-4 mr-2" />
             OpenAI API
           </TabsTrigger>
-          <TabsTrigger value="ollama" className="flex items-center">
-            <Server className="w-4 h-4 mr-2" />
-            Local Ollama
-          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="ollama" className="space-y-4">
+          <Card className="bg-slate-800 border-slate-600">
+            <CardHeader>
+              <CardTitle className="text-lg text-white flex items-center">
+                <Server className="w-5 h-5 mr-2" />
+                Local Ollama Setup (Free AI Chat!)
+                {ollamaStatus === 'success' && <CheckCircle className="w-5 h-5 ml-2 text-green-400" />}
+                {ollamaStatus === 'error' && <AlertCircle className="w-5 h-5 ml-2 text-red-400" />}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert className="border-blue-500/50 bg-blue-500/10">
+                <AlertCircle className="h-4 w-4 text-blue-400" />
+                <AlertDescription className="text-blue-200">
+                  <strong>Why Ollama?</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>🔒 Complete privacy - AI runs on your computer</li>
+                    <li>💰 Completely free - no API costs</li>
+                    <li>🌐 Works offline once set up</li>
+                    <li>🎯 Perfect for both video help AND general questions</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">Step 1: Download & Install Ollama</Label>
+                <div className="text-sm text-slate-400 space-y-2">
+                  <p>1. Go to <a href="https://ollama.ai/download" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ollama.ai/download</a></p>
+                  <p>2. Download and install for your operating system</p>
+                  <p>3. Ollama will install as a background service</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">Step 2: Start Ollama & Pull a Model</Label>
+                <div className="bg-slate-900 p-3 rounded text-sm font-mono space-y-2">
+                  <div className="text-slate-300"># Start Ollama server</div>
+                  <div className="flex items-center space-x-2">
+                    <code className="text-green-400 flex-1">ollama serve</code>
+                    <Button onClick={copyOllamaCommand} size="sm" variant="outline" className="border-slate-600">
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
+                  <div className="text-slate-300 mt-3"># In a new terminal, pull a model (choose one):</div>
+                  <div className="text-green-400">ollama pull llama2         # Great for general chat</div>
+                  <div className="text-green-400">ollama pull codellama      # Good for technical questions</div>
+                  <div className="text-green-400">ollama pull mistral        # Fast and efficient</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">Step 3: Test Connection</Label>
+                <div className="flex space-x-2">
+                  <Button
+                    onClick={checkOllamaAuto}
+                    variant="outline"
+                    className="border-slate-600"
+                  >
+                    Check Status
+                  </Button>
+                  <Button
+                    onClick={testOllama}
+                    disabled={testingOllama}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {testingOllama ? 'Testing...' : 'Test Full Connection'}
+                  </Button>
+                </div>
+                {ollamaAutoStatus && (
+                  <div className="text-sm text-slate-300 bg-slate-900 p-2 rounded">
+                    {ollamaAutoStatus}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-slate-300">Connection URL</Label>
+                <Input
+                  placeholder="http://localhost:11434"
+                  value={ollamaUrl}
+                  onChange={(e) => setOllamaUrl(e.target.value)}
+                  className="text-sm"
+                />
+                <p className="text-xs text-slate-400">Only change this if you're running Ollama on a different port</p>
+              </div>
+
+              <Alert className="border-purple-500/50 bg-purple-500/10">
+                <AlertCircle className="h-4 w-4 text-purple-400" />
+                <AlertDescription className="text-purple-200">
+                  <strong>Once set up, you can ask the AI:</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>"How should I edit these video clips for maximum impact?"</li>
+                    <li>"Tell me about the history of Rome"</li>
+                    <li>"What's the best pacing for energetic content?"</li>
+                    <li>"Explain quantum physics in simple terms"</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="openai" className="space-y-4">
           <Card className="bg-slate-800 border-slate-600">
@@ -249,79 +381,6 @@ const AISettingsPanel: React.FC = () => {
                     <li>Automatic scene detection</li>
                     <li>AI-powered transitions</li>
                     <li>Content analysis and tagging</li>
-                  </ul>
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="ollama" className="space-y-4">
-          <Card className="bg-slate-800 border-slate-600">
-            <CardHeader>
-              <CardTitle className="text-lg text-white flex items-center">
-                <Server className="w-5 h-5 mr-2" />
-                Local Ollama Setup
-                {ollamaStatus === 'success' && <CheckCircle className="w-5 h-5 ml-2 text-green-400" />}
-                {ollamaStatus === 'error' && <AlertCircle className="w-5 h-5 ml-2 text-red-400" />}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-slate-300">Step 1: Install Ollama</Label>
-                <div className="text-sm text-slate-400 space-y-2">
-                  <p>1. Download Ollama from <a href="https://ollama.ai/download" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ollama.ai/download</a></p>
-                  <p>2. Install and run the application</p>
-                  <p>3. Pull a model (recommended: llama2, codellama, or mistral)</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-slate-300">Step 2: Start Ollama Server</Label>
-                <div className="flex items-center space-x-2">
-                  <code className="bg-slate-700 px-2 py-1 rounded text-sm text-slate-300 flex-1">
-                    ollama serve
-                  </code>
-                  <Button
-                    onClick={copyOllamaCommand}
-                    size="sm"
-                    variant="outline"
-                    className="border-slate-600"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-slate-400">Run this command in your terminal to start the Ollama server</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-slate-300">Step 3: Configure Connection</Label>
-                <div className="flex space-x-2">
-                  <Input
-                    placeholder="http://localhost:11434"
-                    value={ollamaUrl}
-                    onChange={(e) => setOllamaUrl(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button
-                    onClick={testOllama}
-                    disabled={testingOllama}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    {testingOllama ? 'Testing...' : 'Test Connection'}
-                  </Button>
-                </div>
-              </div>
-
-              <Alert className="border-purple-500/50 bg-purple-500/10">
-                <AlertCircle className="h-4 w-4 text-purple-400" />
-                <AlertDescription className="text-purple-200">
-                  <strong>Benefits of Local AI:</strong>
-                  <ul className="list-disc list-inside mt-2 space-y-1">
-                    <li>Complete privacy - no data leaves your computer</li>
-                    <li>No API costs or rate limits</li>
-                    <li>Works offline</li>
-                    <li>Customizable models</li>
                   </ul>
                 </AlertDescription>
               </Alert>
