@@ -11,8 +11,11 @@ export class VideoCompilationService {
     onProgress?: (progress: number, stage: string) => void
   ): Promise<{ clips: VideoClip[]; compilationResult: { downloadUrl?: string; outputFile?: string } } | null> {
     console.log('VideoCompilationService: Starting quick randomize and compile');
+    console.log('VideoCompilationService: Source videos count:', sourceVideos.length);
+    console.log('VideoCompilationService: Target duration:', duration);
     
     if (sourceVideos.length === 0) {
+      console.error('VideoCompilationService: No source videos available');
       throw new Error('No source videos available');
     }
 
@@ -20,15 +23,19 @@ export class VideoCompilationService {
       onProgress?.(5, 'Analyzing source videos...');
 
       // Generate clips from source videos
+      console.log('VideoCompilationService: Starting clip generation...');
       const clips = await this.generateClipsFromVideos(sourceVideos, duration, onProgress);
       
       if (clips.length === 0) {
+        console.error('VideoCompilationService: No clips generated');
         throw new Error('No clips could be generated from source videos');
       }
 
+      console.log(`VideoCompilationService: Generated ${clips.length} clips successfully`);
       onProgress?.(30, `Generated ${clips.length} clips, starting compilation...`);
 
       // Compile the generated clips
+      console.log('VideoCompilationService: Starting compilation...');
       const compilationResult = await this.compileTimeline(
         clips,
         {
@@ -41,10 +48,12 @@ export class VideoCompilationService {
         (progress, stage) => {
           // Map compilation progress to 30-100 range
           const adjustedProgress = 30 + (progress * 0.7);
+          console.log(`VideoCompilationService: Compilation progress ${adjustedProgress}% - ${stage}`);
           onProgress?.(adjustedProgress, stage);
         }
       );
 
+      console.log('VideoCompilationService: Compilation result:', compilationResult);
       console.log('VideoCompilationService: Quick randomize completed successfully');
       return { clips, compilationResult };
 
@@ -60,6 +69,7 @@ export class VideoCompilationService {
     onProgress?: (progress: number, stage: string) => void
   ): Promise<VideoClip[]> {
     console.log('VideoCompilationService: Generating clips from videos...');
+    console.log('VideoCompilationService: Source videos:', sourceVideos.map(f => f.name));
     
     if (sourceVideos.length === 0) {
       throw new Error('No source videos available');
@@ -68,10 +78,12 @@ export class VideoCompilationService {
     const clips: VideoClip[] = [];
     const clipDuration = Math.min(5, targetDuration / Math.max(sourceVideos.length, 1));
     
+    console.log('VideoCompilationService: Target clip duration:', clipDuration);
     onProgress?.(10, 'Creating video clips...');
 
     for (let i = 0; i < sourceVideos.length; i++) {
       const file = sourceVideos[i];
+      console.log(`VideoCompilationService: Processing file ${i + 1}/${sourceVideos.length}: ${file.name}`);
       
       try {
         const video = document.createElement('video');
@@ -79,10 +91,11 @@ export class VideoCompilationService {
         
         const duration = await new Promise<number>((resolve) => {
           video.onloadedmetadata = () => {
+            console.log(`VideoCompilationService: Video ${file.name} duration: ${video.duration}`);
             resolve(video.duration || clipDuration);
           };
-          video.onerror = () => {
-            console.warn(`Could not load metadata for ${file.name}, using default duration`);
+          video.onerror = (error) => {
+            console.warn(`VideoCompilationService: Could not load metadata for ${file.name}:`, error);
             resolve(clipDuration);
           };
           video.src = URL.createObjectURL(file);
@@ -105,17 +118,18 @@ export class VideoCompilationService {
         };
 
         clips.push(clip);
+        console.log(`VideoCompilationService: Created clip:`, clip.name, `Duration: ${clip.duration}s`);
         
-        const progress = 10 + ((i + 1) / sourceVideos.length) * 90;
+        const progress = 10 + ((i + 1) / sourceVideos.length) * 20;
         onProgress?.(progress, `Generated clip ${i + 1}/${sourceVideos.length}`);
 
       } catch (error) {
-        console.error(`Error generating clip from ${file.name}:`, error);
+        console.error(`VideoCompilationService: Error generating clip from ${file.name}:`, error);
       }
     }
 
-    onProgress?.(100, `Generated ${clips.length} clips successfully!`);
     console.log(`VideoCompilationService: Generated ${clips.length} clips from ${sourceVideos.length} videos`);
+    onProgress?.(30, `Generated ${clips.length} clips successfully!`);
     return clips;
   }
 
@@ -126,6 +140,8 @@ export class VideoCompilationService {
     onProgress?: (progress: number, stage: string) => void
   ): Promise<{ downloadUrl?: string; outputFile?: string }> {
     console.log('VideoCompilationService: Starting timeline compilation');
+    console.log('VideoCompilationService: Timeline clips count:', timelineClips.length);
+    console.log('VideoCompilationService: Config:', config);
     
     if (timelineClips.length === 0) {
       throw new Error('No clips to compile');
@@ -137,6 +153,8 @@ export class VideoCompilationService {
         config,
         onProgress
       );
+
+      console.log('VideoCompilationService: Compilation service result:', result);
 
       if (onExport) {
         onExport({ config, clips: timelineClips });

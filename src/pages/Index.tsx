@@ -13,8 +13,22 @@ const Index = () => {
 
   console.log('Index component rendering TimelineEditor');
 
+  // Add error boundary logging
+  React.useEffect(() => {
+    console.log('Index component mounted successfully');
+    
+    // Check if we're in a valid state
+    const body = document.body;
+    console.log('Document body classes:', body.className);
+    console.log('Document ready state:', document.readyState);
+    
+    return () => {
+      console.log('Index component unmounting');
+    };
+  }, []);
+
   return (
-    <div className="w-full h-screen relative">
+    <div className="w-full h-screen relative bg-slate-900">
       <TimelineEditor onExport={handleExport} />
     </div>
   );

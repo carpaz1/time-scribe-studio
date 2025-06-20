@@ -19,11 +19,17 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   const [videoError, setVideoError] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
+  // Enhanced logging for debugging
+  console.log('VideoPreview: Received props:', { downloadUrl, outputFile });
+  console.log('VideoPreview: Download URL length:', downloadUrl?.length || 0);
+  console.log('VideoPreview: Download URL starts with blob:', downloadUrl?.startsWith('blob:'));
+
   // Determine if this is a blob URL or server URL
   const isBlob = downloadUrl.startsWith('blob:');
   const fullVideoUrl = isBlob ? downloadUrl : `http://localhost:4000${downloadUrl}`;
 
-  console.log('VideoPreview: URL type:', isBlob ? 'blob' : 'server', 'URL:', fullVideoUrl);
+  console.log('VideoPreview: URL type:', isBlob ? 'blob' : 'server');
+  console.log('VideoPreview: Full URL:', fullVideoUrl);
 
   const handlePlayPause = () => {
     if (videoRef.current) {
@@ -47,8 +53,13 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   };
 
   const handleDownload = () => {
+    console.log('VideoPreview: Download initiated');
+    console.log('VideoPreview: Download URL:', downloadUrl);
+    console.log('VideoPreview: Output file:', outputFile);
+    
     if (isBlob) {
       // For blob URLs, create a download link directly
+      console.log('VideoPreview: Using blob download');
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = outputFile || 'compiled-video.mp4';
@@ -57,6 +68,7 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
       document.body.removeChild(link);
     } else {
       // For server URLs, use the full server path
+      console.log('VideoPreview: Using server download');
       const link = document.createElement('a');
       link.href = fullVideoUrl;
       link.download = outputFile || 'compiled-video.mp4';
@@ -72,9 +84,72 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   };
 
   const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    console.error('VideoPreview: Video error:', e, 'URL:', fullVideoUrl);
+    console.error('VideoPreview: Video error event:', e);
+    console.error('VideoPreview: Video error target:', e.target);
+    console.error('VideoPreview: Video src at error:', (e.target as HTMLVideoElement).src);
     setVideoError(true);
   };
+
+  const handleVideoLoadStart = () => {
+    console.log('VideoPreview: Video load started');
+    setVideoError(false); // Reset error state when starting to load
+  };
+
+  const handleVideoCanPlay = () => {
+    console.log('VideoPreview: Video can play');
+  };
+
+  const handleVideoLoadedData = () => {
+    console.log('VideoPreview: Video data loaded');
+  };
+
+  const handleVideoLoadedMetadata = () => {
+    console.log('VideoPreview: Video metadata loaded');
+    if (videoRef.current) {
+      console.log('VideoPreview: Video duration:', videoRef.current.duration);
+      console.log('VideoPreview: Video dimensions:', videoRef.current.videoWidth, 'x', videoRef.current.videoHeight);
+    }
+  };
+
+  // Check if we have valid data
+  const hasValidData = downloadUrl && downloadUrl.length > 0 && outputFile;
+  console.log('VideoPreview: Has valid data:', hasValidData);
+
+  if (!hasValidData) {
+    return (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <Card className="bg-slate-800 border-slate-700 max-w-2xl w-full">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg text-slate-200">
+                Preview Error
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center text-slate-400">
+              <div className="text-4xl mb-4">⚠️</div>
+              <p className="text-lg mb-2">No video data available</p>
+              <p className="text-sm">The compilation may have failed or produced no output.</p>
+              <div className="mt-4 text-xs text-slate-500">
+                <p>Debug info:</p>
+                <p>Download URL: {downloadUrl || 'null'}</p>
+                <p>Output file: {outputFile || 'null'}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -104,6 +179,9 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
                   <p>Failed to load video preview</p>
                   <p className="text-sm text-slate-500">Video type: {isBlob ? 'Local simulation' : 'Server generated'}</p>
                   <p className="text-xs text-slate-600 mt-1">You can still try to download the file</p>
+                  <div className="mt-2 text-xs text-slate-600">
+                    <p>URL: {fullVideoUrl}</p>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -113,8 +191,10 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
                 className="w-full aspect-video"
                 onEnded={handleVideoEnd}
                 onError={handleVideoError}
-                onLoadStart={() => console.log('VideoPreview: Video load started')}
-                onCanPlay={() => console.log('VideoPreview: Video can play')}
+                onLoadStart={handleVideoLoadStart}
+                onCanPlay={handleVideoCanPlay}
+                onLoadedData={handleVideoLoadedData}
+                onLoadedMetadata={handleVideoLoadedMetadata}
                 controls={false}
                 playsInline
               />
@@ -152,6 +232,10 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
               <br />
               <span className="text-xs text-slate-500">
                 Type: {isBlob ? 'Local simulation' : 'Server compilation'}
+              </span>
+              <br />
+              <span className="text-xs text-slate-600">
+                URL: {fullVideoUrl.substring(0, 50)}...
               </span>
             </div>
             <div className="flex gap-3">
