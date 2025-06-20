@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen, GitPull, AlertCircle } from 'lucide-react';
+import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
