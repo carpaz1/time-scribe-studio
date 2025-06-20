@@ -32,6 +32,7 @@ class OptimizedVideoProcessor {
     const clips = [];
     const batchSize = Math.min(10, targetCount);
     let processedCount = 0;
+    let failedCount = 0;
 
     try {
       // Process videos in parallel batches
@@ -41,7 +42,7 @@ class OptimizedVideoProcessor {
 
         for (let j = 0; j < currentBatchSize; j++) {
           const randomVideo = sourceVideos[Math.floor(Math.random() * sourceVideos.length)];
-          batchPromises.push(this.createRandomClip(randomVideo, clipDuration, i + j));
+          batchPromises.push(this.createRandomClipSafe(randomVideo, clipDuration, i + j));
         }
 
         const batchResults = await Promise.allSettled(batchPromises);
@@ -51,27 +52,36 @@ class OptimizedVideoProcessor {
             clips.push(result.value);
             processedCount++;
           } else {
+            failedCount++;
             console.warn(`OptimizedVideoProcessor: Clip ${i + index} failed:`, result.status === 'rejected' ? result.reason : 'Unknown error');
-            // Create a fallback clip
-            const randomVideo = sourceVideos[Math.floor(Math.random() * sourceVideos.length)];
-            clips.push({
-              id: `clip-${i + index}`,
-              name: `Clip ${i + index + 1}`,
-              duration: clipDuration,
-              startTime: 0,
-              endTime: clipDuration,
-              position: 0,
-              sourceFile: randomVideo
-            });
-            processedCount++;
+            
+            // Only create fallback if we have valid videos
+            try {
+              const randomVideo = sourceVideos[Math.floor(Math.random() * sourceVideos.length)];
+              clips.push({
+                id: `clip-${i + index}`,
+                name: `Clip ${i + index + 1}`,
+                duration: clipDuration,
+                startTime: 0,
+                endTime: clipDuration,
+                position: 0,
+                sourceFile: randomVideo
+              });
+              processedCount++;
+            } catch (fallbackError) {
+              console.error('OptimizedVideoProcessor: Fallback clip creation failed:', fallbackError);
+            }
           }
         });
 
         const progress = (processedCount / targetCount) * 100;
-        onProgress?.(progress, `Generated ${processedCount}/${targetCount} clips`);
+        const statusMessage = failedCount > 0 
+          ? `Generated ${processedCount}/${targetCount} clips (${failedCount} skipped)`
+          : `Generated ${processedCount}/${targetCount} clips`;
+        onProgress?.(progress, statusMessage);
       }
 
-      console.log(`OptimizedVideoProcessor: Successfully generated ${clips.length} clips`);
+      console.log(`OptimizedVideoProcessor: Successfully generated ${clips.length} clips (${failedCount} failed)`);
       return clips;
 
     } catch (error) {
@@ -80,18 +90,40 @@ class OptimizedVideoProcessor {
     }
   }
 
+  private async createRandomClipSafe(sourceFile: File, duration: number, index: number): Promise<any> {
+    try {
+      return await this.createRandomClip(sourceFile, duration, index);
+    } catch (error) {
+      console.error(`OptimizedVideoProcessor: Safe clip creation failed for ${sourceFile.name}:`, error);
+      // Return null to indicate failure - will be handled by caller
+      return null;
+    }
+  }
+
   private async createRandomClip(sourceFile: File, duration: number, index: number): Promise<any> {
     try {
       // Create a video element to get metadata
       const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
       video.preload = 'metadata';
+      video.crossOrigin = 'anonymous';
       
       const objectUrl = URL.createObjectURL(sourceFile);
-      video.src = objectUrl;
+      console.log('OptimizedVideoProcessor: Created object URL for:', sourceFile.name);
+
+      const cleanup = () => {
+        try {
+          URL.revokeObjectURL(objectUrl);
+          video.src = '';
+        } catch (e) {
+          console.warn('OptimizedVideoProcessor: Cleanup error:', e);
+        }
+      };
 
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(new Error(`Timeout loading video metadata for clip ${index}`));
+          reject(new Error(`Timeout loading video metadata for ${sourceFile.name}`));
         }, 5000);
 
         video.addEventListener('loadedmetadata', () => {
@@ -99,46 +131,44 @@ class OptimizedVideoProcessor {
           resolve(void 0);
         }, { once: true });
 
-        video.addEventListener('error', () => {
+        video.addEventListener('error', (e) => {
           clearTimeout(timeout);
-          reject(new Error(`Failed to load video metadata for clip ${index}`));
+          reject(new Error(`Failed to load video metadata for ${sourceFile.name}: ${e.message || 'Unknown error'}`));
         }, { once: true });
+
+        video.src = objectUrl;
       });
 
-      // Ensure we have valid duration
+      // Validate video duration
       const videoDuration = video.duration;
-      if (!videoDuration || videoDuration < duration) {
+      if (!videoDuration || videoDuration < 0.1 || isNaN(videoDuration)) {
+        throw new Error(`Invalid video duration for ${sourceFile.name}: ${videoDuration}`);
+      }
+
+      if (videoDuration < duration) {
         console.warn(`OptimizedVideoProcessor: Video ${sourceFile.name} too short (${videoDuration}s), using full duration`);
       }
 
       const maxStartTime = Math.max(0, videoDuration - duration);
       const startTime = Math.random() * maxStartTime;
+      const actualDuration = Math.min(duration, videoDuration - startTime);
 
       const clip = {
         id: `clip-${index}-${Date.now()}`,
         name: `${sourceFile.name.replace(/\.[^/.]+$/, '')} - ${index + 1}`,
-        duration: Math.min(duration, videoDuration),
+        duration: actualDuration,
         startTime,
-        endTime: Math.min(startTime + duration, videoDuration),
+        endTime: startTime + actualDuration,
         position: 0,
         sourceFile
       };
 
-      URL.revokeObjectURL(objectUrl);
+      cleanup();
       return clip;
 
     } catch (error) {
-      console.error(`OptimizedVideoProcessor: Error creating clip ${index}:`, error);
-      // Return a basic clip as fallback
-      return {
-        id: `clip-${index}-fallback`,
-        name: `${sourceFile.name.replace(/\.[^/.]+$/, '')} - ${index + 1}`,
-        duration,
-        startTime: 0,
-        endTime: duration,
-        position: 0,
-        sourceFile
-      };
+      console.error(`OptimizedVideoProcessor: Error creating clip ${index} from ${sourceFile.name}:`, error);
+      throw error;
     }
   }
 

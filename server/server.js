@@ -512,20 +512,46 @@ async function processVideoCompilation(jobId, files, clipsData) {
     const sortedClips = clipsData.sort((a, b) => a.position - b.position);
     console.log(`[PROCESS] Clips sorted by position for job: ${jobId}`);
 
-    // Filter valid clips
-    const validClips = sortedClips.filter(clip => {
+    // Filter and validate clips with better error handling
+    const validClips = [];
+    let skippedCount = 0;
+
+    for (const clip of sortedClips) {
       const file = files[clip.fileIndex];
       if (!file || !fs.existsSync(file.path)) {
         console.error(`[PROCESS] Invalid file for clip ${clip.id}:`, file?.path || 'undefined');
-        return false;
+        skippedCount++;
+        continue;
       }
-      return true;
-    });
+
+      // Quick file validation
+      try {
+        const stats = fs.statSync(file.path);
+        if (stats.size === 0) {
+          console.error(`[PROCESS] Empty file for clip ${clip.id}:`, file.path);
+          skippedCount++;
+          continue;
+        }
+
+        // Basic video file validation using ffprobe equivalent
+        const isValidVideo = await validateVideoFile(file.path);
+        if (!isValidVideo) {
+          console.error(`[PROCESS] Invalid video file for clip ${clip.id}:`, file.path);
+          skippedCount++;
+          continue;
+        }
+
+        validClips.push(clip);
+      } catch (error) {
+        console.error(`[PROCESS] File validation error for clip ${clip.id}:`, error);
+        skippedCount++;
+      }
+    }
     
-    console.log(`[PROCESS] Valid clips found: ${validClips.length}/${sortedClips.length} for job: ${jobId}`);
+    console.log(`[PROCESS] Valid clips found: ${validClips.length}/${sortedClips.length} for job: ${jobId} (${skippedCount} skipped)`);
     
     if (validClips.length === 0) {
-      const errorMsg = 'No valid clips to process';
+      const errorMsg = 'No valid clips to process - all files were corrupted or unsupported';
       console.error(`[ERROR] ${errorMsg} for job: ${jobId}`);
       compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + errorMsg });
       return;
@@ -533,8 +559,12 @@ async function processVideoCompilation(jobId, files, clipsData) {
 
     console.log(`[PROCESS] Starting FFmpeg processing for job: ${jobId} with ${validClips.length} clips`);
 
-    compilationProgress.set(jobId, { percent: 15, stage: 'Starting video processing...' });
-    console.log(`[PROCESS] Progress set to 15% for job: ${jobId}`);
+    compilationProgress.set(jobId, { 
+      percent: 15, 
+      stage: skippedCount > 0 
+        ? `Starting video processing (${skippedCount} files skipped)...`
+        : 'Starting video processing...'
+    });
 
     // Enhanced video settings for better compatibility and speed
     const videoSettings = {
@@ -543,27 +573,13 @@ async function processVideoCompilation(jobId, files, clipsData) {
       fps: 24 // Reduced from 30 for faster processing
     };
 
-    // Optimized FFmpeg options for speed and Windows compatibility
-    const fastOptions = [
-      '-c:v', 'libx264',
-      '-preset', 'superfast', // Faster than ultrafast but still good quality
-      '-crf', '30', // Slightly lower quality for speed
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      '-avoid_negative_ts', 'make_zero',
-      '-fflags', '+genpts',
-      '-threads', '2', // Limit threads per process for stability
-      '-strict', '-2',
-      '-tune', 'fastdecode' // Optimize for fast decoding
-    ];
-
     // Process based on clip count
     if (validClips.length === 1) {
       console.log(`[PROCESS] Processing single clip for job: ${jobId}`);
-      await processSingleClipFast(jobId, validClips[0], files, outputPath, videoSettings, fastOptions);
+      await processSingleClipSafe(jobId, validClips[0], files, outputPath, videoSettings);
     } else {
       console.log(`[PROCESS] Processing multiple clips for job: ${jobId}`);
-      await processMultipleClipsFast(jobId, validClips, files, outputPath, videoSettings, fastOptions);
+      await processMultipleClipsSafe(jobId, validClips, files, outputPath, videoSettings);
     }
 
     // Check for cancellation before completing
@@ -576,7 +592,9 @@ async function processVideoCompilation(jobId, files, clipsData) {
     // Mark as complete
     const completeProgress = { 
       percent: 100, 
-      stage: 'Complete!',
+      stage: skippedCount > 0 
+        ? `Complete! (${skippedCount} files skipped due to errors)`
+        : 'Complete!',
       downloadUrl: `/download/${outputFilename}`,
       outputFile: outputFilename
     };
@@ -613,7 +631,48 @@ async function processVideoCompilation(jobId, files, clipsData) {
   }
 }
 
-function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fastOptions) {
+// Add video validation function
+async function validateVideoFile(filePath) {
+  return new Promise((resolve) => {
+    const probe = ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) {
+        console.warn(`[VALIDATE] FFprobe error for ${filePath}:`, err.message);
+        resolve(false);
+        return;
+      }
+
+      try {
+        const videoStream = metadata.streams.find(stream => stream.codec_type === 'video');
+        if (!videoStream) {
+          console.warn(`[VALIDATE] No video stream found in ${filePath}`);
+          resolve(false);
+          return;
+        }
+
+        const duration = parseFloat(metadata.format.duration);
+        if (!duration || duration < 0.1 || isNaN(duration)) {
+          console.warn(`[VALIDATE] Invalid duration for ${filePath}:`, duration);
+          resolve(false);
+          return;
+        }
+
+        console.log(`[VALIDATE] Valid video file: ${filePath} (${duration}s)`);
+        resolve(true);
+      } catch (parseError) {
+        console.warn(`[VALIDATE] Metadata parsing error for ${filePath}:`, parseError);
+        resolve(false);
+      }
+    });
+
+    // Add timeout
+    setTimeout(() => {
+      probe.kill();
+      resolve(false);
+    }, 10000);
+  });
+}
+
+function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
   return new Promise((resolve, reject) => {
     console.log(`[SINGLE] Processing single clip for job: ${jobId}`);
     
@@ -637,6 +696,7 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
     
     // Add timeout to prevent hanging
     const timeout = setTimeout(() => {
+      console.warn(`[SINGLE] Processing timeout for job ${jobId}`);
       reject(new Error('Processing timeout - operation took too long'));
     }, 300000); // 5 minutes timeout
     
@@ -657,7 +717,8 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
         '-avoid_negative_ts', 'make_zero',
         '-fflags', '+genpts',
         '-threads', '2',
-        '-strict', '-2'
+        '-strict', '-2',
+        '-loglevel', 'error' // Reduce verbose output
       ])
       .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
       .output(outputPath);
@@ -667,7 +728,7 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
 
     ffmpegProcess
       .on('start', (commandLine) => {
-        console.log(`[SINGLE] FFmpeg started for job ${jobId}:`, commandLine);
+        console.log(`[SINGLE] FFmpeg started for job ${jobId}`);
         compilationProgress.set(jobId, { percent: 25, stage: 'Fast encoding in progress...' });
       })
       .on('progress', (progress) => {
@@ -683,7 +744,6 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
           percent: percent, 
           stage: `Fast encoding: ${Math.round(progress.percent || 0)}%` 
         });
-        console.log(`[SINGLE] Job ${jobId} progress:`, percent + '%');
       })
       .on('end', () => {
         clearTimeout(timeout);
@@ -695,15 +755,22 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
         clearTimeout(timeout);
         activeJobs.delete(jobId);
         console.error(`[SINGLE] FFmpeg error for job ${jobId}:`, err);
-        console.error(`[SINGLE] FFmpeg stderr:`, err.message);
-        reject(new Error(`FFmpeg encoding failed: ${err.message}`));
+        
+        // More specific error handling
+        if (err.message.includes('Invalid data found')) {
+          reject(new Error(`Invalid or corrupted video file: ${file.originalname}`));
+        } else if (err.message.includes('No such file')) {
+          reject(new Error(`Source file not found: ${file.originalname}`));
+        } else {
+          reject(new Error(`Video encoding failed for ${file.originalname}: ${err.message}`));
+        }
       })
       .run();
   });
 }
 
 // Fixed processing for multiple clips - removed conflicting filters
-async function processMultipleClipsFast(jobId, validClips, files, outputPath, videoSettings, fastOptions) {
+async function processMultipleClipsSafe(jobId, validClips, files, outputPath, videoSettings) {
   try {
     // Check for cancellation
     let currentProgress = compilationProgress.get(jobId);
@@ -723,6 +790,7 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
 
     // Process clips one by one and then concatenate
     const processedClipPaths = [];
+    let skippedClips = 0;
     
     for (let i = 0; i < validClips.length; i++) {
       // Check for cancellation before each clip
@@ -738,52 +806,71 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
       
       console.log(`[MULTI] Processing clip ${i + 1}/${validClips.length} for job: ${jobId}`);
       
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error(`Clip ${i} processing timeout`));
-        }, 180000); // 3 minutes per clip
-        
-        const ffmpegProcess = ffmpeg(file.path)
-          .seekInput(Math.max(0, clip.startTime))
-          .duration(Math.max(0.1, clip.duration))
-          .videoCodec('libx264')
-          .audioCodec('aac')
-          .audioBitrate('96k')
-          .size(`${videoSettings.width}x${videoSettings.height}`)
-          .fps(videoSettings.fps)
-          .outputOptions([
-            '-preset', 'superfast',
-            '-crf', '30',
-            '-pix_fmt', 'yuv420p',
-            '-avoid_negative_ts', 'make_zero',
-            '-fflags', '+genpts',
-            '-threads', '2',
-            '-strict', '-2'
-          ])
-          .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
-          .output(tempClipPath);
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error(`Clip ${i} processing timeout`));
+          }, 180000); // 3 minutes per clip
+          
+          const ffmpegProcess = ffmpeg(file.path)
+            .seekInput(Math.max(0, clip.startTime))
+            .duration(Math.max(0.1, clip.duration))
+            .videoCodec('libx264')
+            .audioCodec('aac')
+            .audioBitrate('96k')
+            .size(`${videoSettings.width}x${videoSettings.height}`)
+            .fps(videoSettings.fps)
+            .outputOptions([
+              '-preset', 'superfast',
+              '-crf', '30',
+              '-pix_fmt', 'yuv420p',
+              '-avoid_negative_ts', 'make_zero',
+              '-fflags', '+genpts',
+              '-threads', '2',
+              '-strict', '-2',
+              '-loglevel', 'error'
+            ])
+            .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
+            .output(tempClipPath);
 
-        // Store the process for cancellation
-        activeJobs.set(jobId, { ffmpegProcess });
+          // Store the process for cancellation
+          activeJobs.set(jobId, { ffmpegProcess });
 
-        ffmpegProcess
-          .on('end', () => {
-            clearTimeout(timeout);
-            processedClipPaths.push(tempClipPath);
-            const progress = 30 + ((i + 1) / validClips.length) * 50;
-            compilationProgress.set(jobId, { 
-              percent: progress, 
-              stage: `Processed clip ${i + 1}/${validClips.length}` 
-            });
-            resolve();
-          })
-          .on('error', (err) => {
-            clearTimeout(timeout);
-            activeJobs.delete(jobId);
-            reject(new Error(`Clip ${i} processing failed: ${err.message}`));
-          })
-          .run();
-      });
+          ffmpegProcess
+            .on('end', () => {
+              clearTimeout(timeout);
+              processedClipPaths.push(tempClipPath);
+              const progress = 30 + ((i + 1) / validClips.length) * 50;
+              compilationProgress.set(jobId, { 
+                percent: progress, 
+                stage: `Processed clip ${i + 1}/${validClips.length}${skippedClips > 0 ? ` (${skippedClips} skipped)` : ''}` 
+              });
+              resolve();
+            })
+            .on('error', (err) => {
+              clearTimeout(timeout);
+              activeJobs.delete(jobId);
+              console.warn(`[MULTI] Clip ${i} failed, skipping:`, err.message);
+              skippedClips++;
+              
+              // Don't reject, just skip this clip and continue
+              const progress = 30 + ((i + 1) / validClips.length) * 50;
+              compilationProgress.set(jobId, { 
+                percent: progress, 
+                stage: `Processed clip ${i + 1}/${validClips.length} (${skippedClips} skipped)` 
+              });
+              resolve();
+            })
+            .run();
+        });
+      } catch (clipError) {
+        console.warn(`[MULTI] Clip ${i} processing failed, skipping:`, clipError.message);
+        skippedClips++;
+      }
+    }
+
+    if (processedClipPaths.length === 0) {
+      throw new Error('All clips failed to process - no valid output generated');
     }
 
     // Check for cancellation before concatenation
@@ -798,7 +885,10 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
     const concatContent = processedClipPaths.map(path => `file '${path.replace(/\\/g, '/')}'`).join('\n');
     fs.writeFileSync(concatListPath, concatContent);
 
-    compilationProgress.set(jobId, { percent: 85, stage: 'Concatenating clips...' });
+    compilationProgress.set(jobId, { 
+      percent: 85, 
+      stage: `Concatenating ${processedClipPaths.length} clips${skippedClips > 0 ? ` (${skippedClips} skipped)` : ''}...` 
+    });
 
     // Concatenate all processed clips
     await new Promise((resolve, reject) => {
@@ -811,6 +901,7 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
         .inputOptions(['-f', 'concat', '-safe', '0'])
         .videoCodec('copy')
         .audioCodec('copy')
+        .outputOptions(['-loglevel', 'error'])
         .output(outputPath);
 
       // Store the process for cancellation
@@ -856,6 +947,10 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
     });
     if (fs.existsSync(concatListPath)) {
       fs.unlinkSync(concatListPath);
+    }
+
+    if (skippedClips > 0) {
+      console.log(`[MULTI] Job ${jobId} completed with ${skippedClips} clips skipped`);
     }
 
   } catch (error) {
