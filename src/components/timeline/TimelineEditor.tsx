@@ -1,4 +1,3 @@
-
 import React, { useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -14,6 +13,8 @@ import EditorMainContent from './EditorMainContent';
 import StatusBar from './StatusBar';
 import SettingsPanel from './SettingsPanel';
 import VideoPreview from './VideoPreview';
+import CleanVideoPlayer from './CleanVideoPlayer';
+import TimelineMain from './TimelineMain';
 
 interface TimelineEditorProps {
   onExport?: (data: CompileRequest) => void;
