@@ -11,18 +11,21 @@ export class ClipGenerator {
   ): Promise<VideoClip[]> {
     console.log('ClipGenerator: Generating clips from videos...');
     console.log('ClipGenerator: Source videos:', sourceVideos.map(f => f.name));
-    console.log('ClipGenerator: Target duration:', targetDuration);
-    console.log('ClipGenerator: Clip duration:', clipDuration);
+    console.log('ClipGenerator: Target duration:', targetDuration, 'Clip duration:', clipDuration);
     
     if (sourceVideos.length === 0) {
       throw new Error('No source videos available');
     }
 
-    const clips: VideoClip[] = [];
-    
     // Calculate exactly how many clips we need to reach target duration
-    const clipsNeeded = Math.ceil(targetDuration / clipDuration);
-    console.log('ClipGenerator: Total clips needed for target duration:', clipsNeeded);
+    const totalClipsNeeded = Math.ceil(targetDuration / clipDuration);
+    console.log('ClipGenerator: Total clips needed for target duration:', totalClipsNeeded);
+    
+    // Calculate clips per video to reach the target
+    const actualClipsPerVideo = Math.ceil(totalClipsNeeded / sourceVideos.length);
+    console.log('ClipGenerator: Clips per video calculated:', actualClipsPerVideo);
+
+    const clips: VideoClip[] = [];
     
     onProgress?.(10, 'Creating video clips...');
 
@@ -30,9 +33,9 @@ export class ClipGenerator {
     let clipsGenerated = 0;
     let videoIndex = 0;
 
-    while (clipsGenerated < clipsNeeded) {
+    while (clipsGenerated < totalClipsNeeded) {
       const file = sourceVideos[videoIndex % sourceVideos.length]; // Cycle through videos
-      console.log(`ClipGenerator: Processing file ${videoIndex % sourceVideos.length + 1}/${sourceVideos.length}: ${file.name} (clip ${clipsGenerated + 1}/${clipsNeeded})`);
+      console.log(`ClipGenerator: Processing file ${videoIndex % sourceVideos.length + 1}/${sourceVideos.length}: ${file.name} (clip ${clipsGenerated + 1}/${totalClipsNeeded})`);
       
       try {
         const videoDuration = await this.getVideoDuration(file);
@@ -56,10 +59,10 @@ export class ClipGenerator {
         clips.push(clip);
         clipsGenerated++;
         
-        console.log(`ClipGenerator: Created clip ${clipsGenerated}/${clipsNeeded}:`, clip.name, `Duration: ${clip.duration}s, Position: ${clip.position}s`);
+        console.log(`ClipGenerator: Created clip ${clipsGenerated}/${totalClipsNeeded}:`, clip.name, `Duration: ${clip.duration}s, Position: ${clip.position}s`);
 
-        const progress = 10 + ((clipsGenerated / clipsNeeded) * 20);
-        onProgress?.(progress, `Generated ${clipsGenerated}/${clipsNeeded} clips from ${sourceVideos.length} videos`);
+        const progress = 10 + ((clipsGenerated / totalClipsNeeded) * 20);
+        onProgress?.(progress, `Generated ${clipsGenerated}/${totalClipsNeeded} clips (${Math.round(clipsGenerated * clipDuration)}s/${targetDuration}s)`);
 
       } catch (error) {
         console.error(`ClipGenerator: Error generating clip from ${file.name}:`, error);
@@ -69,14 +72,17 @@ export class ClipGenerator {
       videoIndex++;
       
       // Safety check to prevent infinite loop
-      if (videoIndex > clipsNeeded * sourceVideos.length) {
+      if (videoIndex > totalClipsNeeded * sourceVideos.length) {
         console.warn('ClipGenerator: Safety break - too many attempts');
         break;
       }
     }
 
-    console.log(`ClipGenerator: Successfully generated ${clips.length} clips from ${sourceVideos.length} videos to reach ${targetDuration}s duration`);
-    onProgress?.(30, `Generated ${clips.length} clips successfully! Total duration: ${clips.length * clipDuration}s`);
+    const totalGeneratedDuration = clips.length * clipDuration;
+    console.log(`ClipGenerator: Successfully generated ${clips.length} clips from ${sourceVideos.length} videos`);
+    console.log(`ClipGenerator: Total duration: ${totalGeneratedDuration}s (target was ${targetDuration}s)`);
+    
+    onProgress?.(30, `Generated ${clips.length} clips! Total duration: ${totalGeneratedDuration}s`);
     return clips;
   }
 

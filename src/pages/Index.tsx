@@ -28,7 +28,7 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="w-full h-screen relative bg-slate-900/95 backdrop-blur-sm">
+    <div className="w-full h-screen relative">
       <TimelineEditor onExport={handleExport} />
     </div>
   );

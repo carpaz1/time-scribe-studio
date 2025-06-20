@@ -214,7 +214,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 custom-background">
+      <div className="h-screen flex flex-col bg-transparent">
         <EditorHeader
           isPlaying={state.isPlaying}
           isCompiling={processing.isCompiling}
@@ -235,7 +235,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
           onCloseVideoPreview={() => updateState({ showVideoPreview: !state.showVideoPreview })}
         />
         
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden bg-slate-900/20 backdrop-blur-sm">
           <EditorSidebar
             sourceVideos={state.sourceVideos}
             clips={state.clips}
