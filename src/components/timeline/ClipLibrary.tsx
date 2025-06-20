@@ -53,6 +53,11 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     onBulkUpload(files);
   };
 
+  const handleBulkClipsGenerated = (generatedClips: VideoClip[]) => {
+    onClipsUpdate([...clips, ...generatedClips]);
+    onClipsGenerated(generatedClips);
+  };
+
   const createThumbnail = async (file: File, startTime: number = 0): Promise<string> => {
     return new Promise((resolve) => {
       const video = document.createElement('video');
@@ -215,7 +220,10 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         <VideoUploader onVideoUpload={handleVideoUpload} />
         
         <div className="mt-3">
-          <BulkDirectorySelector onBulkUpload={handleBulkUpload} />
+          <BulkDirectorySelector 
+            onBulkUpload={handleBulkUpload} 
+            onClipsGenerated={handleBulkClipsGenerated}
+          />
         </div>
       </div>
 

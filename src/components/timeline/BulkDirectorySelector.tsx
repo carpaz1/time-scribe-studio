@@ -9,10 +9,12 @@ import { useToast } from '@/hooks/use-toast';
 
 interface BulkDirectorySelectorProps {
   onBulkUpload: (files: File[]) => void;
+  onClipsGenerated?: (clips: VideoClip[]) => void;
 }
 
 const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
   onBulkUpload,
+  onClipsGenerated,
 }) => {
   const [config, setConfig] = useState({
     numPictures: 5,
@@ -84,6 +86,21 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
           }
         };
 
+        video.onerror = () => {
+          // Fallback thumbnail
+          if (ctx) {
+            canvas.width = 160;
+            canvas.height = 90;
+            ctx.fillStyle = '#374151';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#9CA3AF';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('📽️', canvas.width / 2, canvas.height / 2);
+            resolve(canvas.toDataURL());
+          }
+        };
+
         video.src = URL.createObjectURL(file);
       }
     });
@@ -113,7 +130,6 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
 
     try {
       const generatedClips: VideoClip[] = [];
-      const sourceVideos: SourceVideo[] = [];
 
       // Process pictures
       if (config.numPictures > 0 && selectedFiles.pictures.length > 0) {
@@ -131,7 +147,6 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
             thumbnail,
             sourceFile: picture,
             position: 0,
-            originalVideoId: `picture-${i}`,
           };
           
           generatedClips.push(clip);
@@ -147,17 +162,6 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
           const duration = await getVideoDuration(video);
           const thumbnail = await createThumbnail(video);
           
-          // Create source video entry
-          const sourceVideo: SourceVideo = {
-            id: `bulk-video-${Date.now()}-${i}`,
-            name: video.name.replace(/\.[^/.]+$/, ''),
-            file: video,
-            duration,
-            thumbnail,
-          };
-          
-          sourceVideos.push(sourceVideo);
-
           // Create random clip from video
           if (duration >= config.clipDuration) {
             const maxStartTime = duration - config.clipDuration;
@@ -171,7 +175,19 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
               thumbnail,
               sourceFile: video,
               position: 0,
-              originalVideoId: sourceVideo.id,
+            };
+            
+            generatedClips.push(clip);
+          } else if (duration > 0) {
+            // If video is shorter than desired clip duration, use full video
+            const clip: VideoClip = {
+              id: `video-clip-${Date.now()}-${i}`,
+              name: `${video.name.replace(/\.[^/.]+$/, '')}-clip`,
+              startTime: 0,
+              duration: duration,
+              thumbnail,
+              sourceFile: video,
+              position: 0,
             };
             
             generatedClips.push(clip);
@@ -182,7 +198,11 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
       // Shuffle all generated clips
       const shuffledClips = shuffleArray(generatedClips);
 
+      // Call the callbacks
       onBulkUpload(selectedFiles.pictures.concat(selectedFiles.videos));
+      if (onClipsGenerated) {
+        onClipsGenerated(shuffledClips);
+      }
 
       toast({
         title: "Bulk processing complete",
