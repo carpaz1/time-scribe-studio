@@ -357,9 +357,9 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
         '-avoid_negative_ts', 'make_zero',
         '-fflags', '+genpts',
         '-threads', '2',
-        '-strict', '-2',
-        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black'
+        '-strict', '-2'
       ])
+      .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
       .output(outputPath)
       .on('start', (commandLine) => {
         console.log(`[SINGLE] FFmpeg started for job ${jobId}:`, commandLine);
@@ -430,9 +430,9 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
             '-avoid_negative_ts', 'make_zero',
             '-fflags', '+genpts',
             '-threads', '2',
-            '-strict', '-2',
-            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black'
+            '-strict', '-2'
           ])
+          .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
           .output(tempClipPath)
           .on('end', () => {
             clearTimeout(timeout);
