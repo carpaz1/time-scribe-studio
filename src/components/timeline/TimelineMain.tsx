@@ -8,77 +8,48 @@ import TimelineInfoBar from './TimelineInfoBar';
 import PlaybackControls from './PlaybackControls';
 
 interface TimelineMainProps {
-  timelineState: any;
-  onClipRemove: (clipId: string) => void;
-  onTogglePlayback: () => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
+  clips: VideoClip[];
+  totalDuration: number;
+  zoom: number;
+  playheadPosition: number;
+  isDragging: boolean;
+  draggedClip: VideoClip | null;
+  onClipDragStart: (clip: VideoClip) => void;
+  onClipDragEnd: () => void;
+  onClipRemove: (id: string) => void;
+  onPlayheadMove: (position: number) => void;
 }
 
 const TimelineMain: React.FC<TimelineMainProps> = ({
-  timelineState,
+  clips,
+  totalDuration,
+  zoom,
+  playheadPosition,
+  isDragging,
+  draggedClip,
+  onClipDragStart,
+  onClipDragEnd,
   onClipRemove,
-  onTogglePlayback,
-  onZoomIn,
-  onZoomOut,
+  onPlayheadMove,
 }) => {
   const timelineRef = useRef<HTMLDivElement>(null);
-  const {
-    timelineClips,
-    isPlaying,
-    playheadPosition,
-    zoom,
-    totalDuration,
-    draggedClip,
-    timelineScrollOffset,
-    setPlayheadPosition,
-    setZoom,
-    setDraggedClip,
-    setTimelineScrollOffset,
-    handleClipReorder,
-    handleReset,
-    handleClearTimeline,
-  } = timelineState;
 
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const newPosition = (x / rect.width) * (totalDuration / zoom);
-    setPlayheadPosition(Math.max(0, Math.min(totalDuration, newPosition)));
+    onPlayheadMove(Math.max(0, Math.min(totalDuration, newPosition)));
   };
 
   const handleTimelineScroll = (e: React.WheelEvent) => {
-    if (e.shiftKey) {
-      e.preventDefault();
-      if (e.deltaY < 0) {
-        onZoomIn();
-      } else {
-        onZoomOut();
-      }
-    } else {
-      const scrollAmount = e.deltaY * 0.5;
-      setTimelineScrollOffset(prev => Math.max(0, prev + scrollAmount));
-    }
+    // Handle scroll logic here if needed
   };
 
   return (
     <div className="flex flex-col h-full">
-      <PlaybackControls
-        isPlaying={isPlaying}
-        zoom={zoom}
-        timelineClipsLength={timelineClips.length}
-        totalDuration={totalDuration}
-        playheadPosition={playheadPosition}
-        onTogglePlayback={onTogglePlayback}
-        onZoomIn={onZoomIn}
-        onZoomOut={onZoomOut}
-        onReset={handleReset}
-        onClearTimeline={handleClearTimeline}
-      />
-
       <TimelineInfoBar
-        timelineClipsLength={timelineClips.length}
+        timelineClipsLength={clips.length}
         totalDuration={totalDuration}
         zoom={zoom}
         playheadPosition={playheadPosition}
@@ -98,21 +69,21 @@ const TimelineMain: React.FC<TimelineMainProps> = ({
             onClick={handleTimelineClick}
           >
             <TimelineTrack
-              clips={timelineClips}
+              clips={clips}
               totalDuration={totalDuration}
               zoom={zoom}
               onClipRemove={onClipRemove}
-              onClipReorder={handleClipReorder}
+              onClipReorder={() => {}}
               draggedClip={draggedClip}
-              setDraggedClip={setDraggedClip}
-              scrollOffset={timelineScrollOffset}
+              setDraggedClip={() => {}}
+              scrollOffset={0}
             />
             
             <Playhead
               position={playheadPosition}
               totalDuration={totalDuration}
               zoom={zoom}
-              onPositionChange={setPlayheadPosition}
+              onPositionChange={onPlayheadMove}
             />
           </div>
         </div>

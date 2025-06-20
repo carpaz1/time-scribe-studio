@@ -22,6 +22,12 @@ interface ClipLibraryProps {
   onRandomizeAll: () => void;
   onVideoUpload: (files: File[]) => void;
   onBulkUpload: (files: File[]) => void;
+  progressTracker?: {
+    current: number;
+    total: number;
+    message: string;
+    isActive: boolean;
+  };
 }
 
 const ClipLibrary: React.FC<ClipLibraryProps> = ({
@@ -35,6 +41,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
   onRandomizeAll,
   onVideoUpload,
   onBulkUpload,
+  progressTracker,
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);

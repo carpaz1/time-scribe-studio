@@ -18,6 +18,8 @@ interface EditorHeaderProps {
   onDownloadClips: () => void;
   onOpenSettings: () => void;
   lastCompilationResult?: { downloadUrl?: string; outputFile?: string };
+  showVideoPreview: boolean;
+  onCloseVideoPreview: () => void;
 }
 
 const EditorHeader: React.FC<EditorHeaderProps> = (props) => {
