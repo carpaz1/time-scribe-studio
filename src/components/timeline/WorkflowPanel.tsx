@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, Settings, Zap, Play, Download, Image } from 'lucide-react';
+import { Upload, Zap, Play, Image, X } from 'lucide-react';
 
 interface WorkflowPanelProps {
   sourceVideos: File[];
@@ -51,7 +51,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
   };
 
   const handleQuickGenerate = () => {
-    console.log(`Starting quick generate for ${selectedDuration} minute(s), includePictures: ${includePictures}`);
     onQuickRandomize(selectedDuration, includePictures);
   };
 
@@ -124,7 +123,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
         {sourceVideos.length > 0 && (
           <div className="space-y-3">
             <Label className="text-slate-300 text-sm font-medium block">
-              2. Choose Workflow
+              2. Generate & Compile
             </Label>
             
             {/* Include Pictures Checkbox */}
@@ -146,8 +145,8 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
 
             <Tabs value={activeWorkflow} onValueChange={(value) => setActiveWorkflow(value as 'quick' | 'custom')}>
               <TabsList className="grid w-full grid-cols-2 bg-slate-700/50 h-8">
-                <TabsTrigger value="quick" className="text-xs">Quick Random</TabsTrigger>
-                <TabsTrigger value="custom" className="text-xs">Custom</TabsTrigger>
+                <TabsTrigger value="quick" className="text-xs">Quick Auto</TabsTrigger>
+                <TabsTrigger value="custom" className="text-xs">Custom Timeline</TabsTrigger>
               </TabsList>
               
               <TabsContent value="quick" className="space-y-3 mt-3">
@@ -160,9 +159,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">1 min (60 clips)</SelectItem>
-                    <SelectItem value="2">2 min (120 clips)</SelectItem>
-                    <SelectItem value="5">5 min (300 clips)</SelectItem>
+                    <SelectItem value="1">1 min (60 clips) - Fast</SelectItem>
+                    <SelectItem value="2">2 min (120 clips) - Medium</SelectItem>
+                    <SelectItem value="5">5 min (300 clips) - Long</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
@@ -171,24 +170,13 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                   className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-xs px-2 py-1 h-8"
                 >
                   <Zap className="w-3 h-3 mr-1" />
-                  {isProcessing ? `Processing... ${Math.round(processingProgress)}%` : `Generate & Compile ${selectedDuration}min`}
+                  {isProcessing ? 'Processing...' : `Auto Generate ${selectedDuration}min Video`}
                 </Button>
-                
-                {/* Show detailed progress when processing */}
-                {isProcessing && (
-                  <div className="space-y-2 p-3 bg-slate-700/30 rounded">
-                    <div className="flex items-center justify-between text-xs text-slate-300">
-                      <span className="truncate pr-2 flex-1">{processingStage || 'Processing...'}</span>
-                      <span className="whitespace-nowrap">{Math.round(processingProgress)}%</span>
-                    </div>
-                    <Progress value={processingProgress} className="h-2 bg-slate-600" />
-                  </div>
-                )}
               </TabsContent>
               
               <TabsContent value="custom" className="space-y-3 mt-3">
                 <div className="text-xs text-slate-400">
-                  Custom workflow allows manual clip selection
+                  Custom workflow allows manual clip selection and arrangement
                 </div>
                 <Button
                   onClick={onCompile}
@@ -203,22 +191,35 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
           </div>
         )}
 
-        {/* Processing Status (Global) */}
+        {/* Enhanced Progress Display */}
         {isProcessing && (
           <div className="space-y-3 border-t border-slate-600 pt-3">
             <div className="flex items-center justify-between text-xs text-slate-300">
-              <span className="truncate pr-2 flex-1">{processingStage}</span>
-              <span className="whitespace-nowrap">{Math.round(processingProgress)}%</span>
+              <span className="truncate pr-2 flex-1">
+                {processingStage || 'Processing...'}
+              </span>
+              <span className="whitespace-nowrap font-mono">
+                {Math.round(processingProgress)}%
+              </span>
             </div>
-            <Progress value={processingProgress} className="h-2 bg-slate-600" />
-            <Button
-              onClick={onCancelProcessing}
-              variant="destructive"
-              size="sm"
-              className="w-full text-xs h-6"
-            >
-              Cancel
-            </Button>
+            <Progress 
+              value={processingProgress} 
+              className="h-3 bg-slate-600"
+            />
+            <div className="flex items-center justify-between text-xs">
+              <div className="text-slate-400">
+                {processingProgress < 50 ? 'Generating clips...' : 'Compiling video...'}
+              </div>
+              <Button
+                onClick={onCancelProcessing}
+                variant="destructive"
+                size="sm"
+                className="h-6 text-xs px-2"
+              >
+                <X className="w-3 h-3 mr-1" />
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>
