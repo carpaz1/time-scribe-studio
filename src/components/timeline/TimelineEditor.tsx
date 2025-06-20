@@ -2,24 +2,17 @@ import React, { useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Toaster } from "@/components/ui/toaster";
-import { Button } from "@/components/ui/button";
 import { CompileRequest } from '@/types/timeline';
 import { VideoCompilerService } from '@/services/videoCompiler';
 import { useTimelineEditor } from '@/hooks/useTimelineEditor';
 import { usePlaybackControls } from '@/hooks/usePlaybackControls';
 import { VideoCompilationService } from './VideoCompilationService';
-import { ClipGenerationService } from './ClipGenerationService';
-import ImprovedWorkflowPanel from './ImprovedWorkflowPanel';
-import VideoPlayerSection from './VideoPlayerSection';
-import TimelineMain from './TimelineMain';
-import TimelineControls from './TimelineControls';
+import EditorHeader from './EditorHeader';
+import EditorSidebar from './EditorSidebar';
+import EditorMainContent from './EditorMainContent';
 import StatusBar from './StatusBar';
 import SettingsPanel from './SettingsPanel';
-import EditorHeader from './EditorHeader';
 import VideoPreview from './VideoPreview';
-import AIAssistant from './AIAssistant';
-import ClipsLibrary from './ClipsLibrary';
-import BackgroundSettings from './BackgroundSettings';
 
 interface TimelineEditorProps {
   onExport?: (data: CompileRequest) => void;
@@ -124,8 +117,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       const clips = await VideoCompilationService.generateClipsFromVideos(
         state.sourceVideos,
         duration,
-        3, // default clips per video
-        5, // default clip duration
+        3,
+        5,
         (progress, stage) => {
           console.log(`TimelineEditor: Clip generation progress - ${progress}%, ${stage}`);
           updateProcessing({ generationProgress: progress, processingStage: stage });
@@ -243,90 +236,54 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         />
         
         <div className="flex flex-1 overflow-hidden">
-          {/* Enhanced Sidebar */}
-          <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <ImprovedWorkflowPanel
-                sourceVideos={state.sourceVideos}
-                timelineClips={state.timelineClips}
-                onVideoUpload={handleFilesSelected}
-                onGenerateClips={handleGenerateClips}
-                onQuickRandomize={handleQuickRandomize}
-                onCompile={handleCompile}
-                isProcessing={isProcessing}
-                processingProgress={currentProgress}
-                processingStage={currentStage}
-                onCancelProcessing={handleCancelProcessing}
-              />
+          <EditorSidebar
+            sourceVideos={state.sourceVideos}
+            clips={state.clips}
+            timelineClips={state.timelineClips}
+            isProcessing={isProcessing}
+            currentProgress={currentProgress}
+            currentStage={currentStage}
+            onVideoUpload={handleFilesSelected}
+            onGenerateClips={handleGenerateClips}
+            onQuickRandomize={handleQuickRandomize}
+            onCompile={handleCompile}
+            onCancelProcessing={handleCancelProcessing}
+            onAddToTimeline={handleAddToTimeline}
+            onClearTimeline={handleClearTimeline}
+            onAISuggestion={handleAISuggestion}
+            onAIEdit={handleAIEdit}
+          />
 
-              <BackgroundSettings />
-
-              <AIAssistant
-                clips={state.clips}
-                onApplySuggestion={handleAISuggestion}
-                onApplyEdit={handleAIEdit}
-              />
-
-              <ClipsLibrary
-                clips={state.clips}
-                onAddToTimeline={handleAddToTimeline}
-                onClearTimeline={handleClearTimeline}
-              />
-            </div>
-          </div>
-
-          {/* Main Content */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Video Player */}
-            <div className="h-1/2 border-b border-slate-700/50">
-              <VideoPlayerSection
-                timelineClips={state.timelineClips}
-                playheadPosition={state.playheadPosition}
-                isPlaying={state.isPlaying}
-                onTimeUpdate={(position) => updateState({ playheadPosition: position })}
-              />
-            </div>
-            
-            {/* Timeline */}
-            <div className="flex-1 flex flex-col min-h-0">
-              <TimelineMain
-                clips={state.timelineClips}
-                totalDuration={state.totalDuration}
-                zoom={state.zoom}
-                playheadPosition={state.playheadPosition}
-                isDragging={state.isDragging}
-                draggedClip={state.draggedClip}
-                onClipDragStart={handleClipDragStart}
-                onClipDragEnd={handleClipDragEnd}
-                onClipRemove={handleClipRemove}
-                onPlayheadMove={(position) => updateState({ playheadPosition: position })}
-                onZoomChange={(zoom) => updateState({ zoom })}
-              />
-              
-              {/* Controls */}
-              <div className="border-t border-slate-700/50 bg-slate-800/30 backdrop-blur-sm p-4">
-                <TimelineControls
-                  isPlaying={state.isPlaying}
-                  isCompiling={processing.isCompiling}
-                  compilationProgress={processing.compilationProgress}
-                  compilationStage={processing.compilationStage}
-                  timelineClipsLength={state.timelineClips.length}
-                  onTogglePlayback={togglePlayback}
-                  onZoomIn={handleZoomIn}
-                  onZoomOut={handleZoomOut}
-                  onReset={handleReset}
-                  onClearTimeline={handleClearTimeline}
-                  onExportJSON={handleExportJSON}
-                  onCompile={handleCompile}
-                  onDownloadClips={() => {}}
-                  onOpenSettings={() => updateState({ showSettings: true })}
-                  lastCompilationResult={lastCompilationResult}
-                  showVideoPreview={state.showVideoPreview}
-                  onCloseVideoPreview={() => updateState({ showVideoPreview: !state.showVideoPreview })}
-                />
-              </div>
-            </div>
-          </div>
+          <EditorMainContent
+            timelineClips={state.timelineClips}
+            totalDuration={state.totalDuration}
+            zoom={state.zoom}
+            playheadPosition={state.playheadPosition}
+            isPlaying={state.isPlaying}
+            isDragging={state.isDragging}
+            draggedClip={state.draggedClip}
+            isCompiling={processing.isCompiling}
+            compilationProgress={processing.compilationProgress}
+            compilationStage={processing.compilationStage}
+            lastCompilationResult={lastCompilationResult}
+            showVideoPreview={state.showVideoPreview}
+            onTimeUpdate={(position) => updateState({ playheadPosition: position })}
+            onClipDragStart={handleClipDragStart}
+            onClipDragEnd={handleClipDragEnd}
+            onClipRemove={handleClipRemove}
+            onPlayheadMove={(position) => updateState({ playheadPosition: position })}
+            onZoomChange={(zoom) => updateState({ zoom })}
+            onTogglePlayback={togglePlayback}
+            onZoomIn={handleZoomIn}
+            onZoomOut={handleZoomOut}
+            onReset={handleReset}
+            onClearTimeline={handleClearTimeline}
+            onExportJSON={handleExportJSON}
+            onCompile={handleCompile}
+            onDownloadClips={() => {}}
+            onOpenSettings={() => updateState({ showSettings: true })}
+            onCloseVideoPreview={() => updateState({ showVideoPreview: !state.showVideoPreview })}
+          />
         </div>
 
         <StatusBar
