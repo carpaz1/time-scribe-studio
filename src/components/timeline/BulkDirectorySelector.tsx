@@ -1,21 +1,17 @@
-
 import React, { useState, useRef } from 'react';
 import { Folder, Shuffle, Image, Video, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { SourceVideo, VideoClip } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
 
 interface BulkDirectorySelectorProps {
-  onSourceVideosUpdate: (videos: SourceVideo[]) => void;
-  onClipsGenerated: (clips: VideoClip[]) => void;
+  onBulkUpload: (files: File[]) => void;
 }
 
 const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
-  onSourceVideosUpdate,
-  onClipsGenerated,
+  onBulkUpload,
 }) => {
   const [config, setConfig] = useState({
     numPictures: 5,
@@ -185,7 +181,7 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
       // Shuffle all generated clips
       const shuffledClips = shuffleArray(generatedClips);
 
-      onSourceVideosUpdate(sourceVideos);
+      onBulkUpload(selectedFiles.pictures.concat(selectedFiles.videos));
       onClipsGenerated(shuffledClips);
 
       toast({

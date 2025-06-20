@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Upload, Video, Settings, Shuffle, Plus, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -289,6 +288,10 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
               <p className="text-sm text-slate-500 mb-4">
                 Upload videos and generate clips to get started
               </p>
+              <div className="space-y-3">
+                <VideoUploader onVideoUpload={handleVideoUpload} />
+                <BulkDirectorySelector onBulkUpload={handleBulkUpload} />
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
