@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 
 interface RandomizeStepProps {
   onGenerateClips: (config: any) => void;
@@ -30,6 +31,9 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
   sourceVideos,
 }) => {
   const [timedRandomizeDuration, setTimedRandomizeDuration] = useState<1 | 2 | 5>(1);
+  const [isRandomizeCompiling, setIsRandomizeCompiling] = useState(false);
+  const [randomizeProgress, setRandomizeProgress] = useState(0);
+  const [randomizeStage, setRandomizeStage] = useState('');
 
   const handleGenerateClips = () => {
     const finalConfig = {
@@ -46,16 +50,90 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
       return;
     }
 
+    setIsRandomizeCompiling(true);
+    setRandomizeProgress(0);
+    setRandomizeStage('Generating random clips...');
+
     try {
-      // First generate the clips for the specified duration
+      const targetDurationSeconds = duration * 60;
+      const clipDuration = 1; // Always use 1-second clips
+      const clipsNeeded = Math.min(targetDurationSeconds, sourceVideos.length * 10); // Max 10 clips per video
+      
+      console.log(`Generating ${clipsNeeded} random 1-second clips from ${sourceVideos.length} videos`);
+      
+      // Create truly random clips by shuffling video selection
+      const randomClips = [];
+      const shuffledVideos = [...sourceVideos].sort(() => Math.random() - 0.5);
+      
+      for (let i = 0; i < clipsNeeded; i++) {
+        setRandomizeProgress((i / clipsNeeded) * 50); // First 50% for clip generation
+        setRandomizeStage(`Generating clip ${i + 1}/${clipsNeeded}...`);
+        
+        // Pick a random video (with replacement to ensure true randomness)
+        const randomVideoIndex = Math.floor(Math.random() * sourceVideos.length);
+        const video = sourceVideos[randomVideoIndex];
+        
+        // Create a video element to get duration
+        const videoElement = document.createElement('video');
+        const objectUrl = URL.createObjectURL(video);
+        videoElement.src = objectUrl;
+        
+        await new Promise((resolve) => {
+          videoElement.addEventListener('loadedmetadata', () => {
+            const videoDuration = videoElement.duration;
+            const startTime = Math.random() * Math.max(0, videoDuration - clipDuration);
+            
+            const randomClip = {
+              id: `random-compile-${Date.now()}-${i}-${Math.random()}`,
+              name: `Random ${i}`,
+              sourceFile: video,
+              startTime,
+              duration: clipDuration,
+              thumbnail: '',
+              position: i * clipDuration,
+              originalVideoId: video.name,
+            };
+            
+            randomClips.push(randomClip);
+            URL.revokeObjectURL(objectUrl);
+            resolve(null);
+          });
+        });
+        
+        // Small delay to prevent blocking
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+
+      setRandomizeStage('Starting compilation...');
+      setRandomizeProgress(60);
+      
+      // Trigger the compilation with progress tracking
+      console.log(`Starting compilation of ${randomClips.length} random clips`);
+      
+      // Call the parent's randomize function to set the clips
       await onRandomizeTimed(duration);
       
-      // Then automatically trigger compilation
+      // Then trigger compilation
+      setRandomizeStage('Compiling video...');
+      setRandomizeProgress(75);
+      
       setTimeout(() => {
         onCompile();
-      }, 500); // Small delay to ensure clips are generated first
+        setRandomizeProgress(100);
+        setRandomizeStage('Complete!');
+        
+        setTimeout(() => {
+          setIsRandomizeCompiling(false);
+          setRandomizeProgress(0);
+          setRandomizeStage('');
+        }, 2000);
+      }, 500);
+
     } catch (error) {
       console.error('Error in randomize and compile:', error);
+      setIsRandomizeCompiling(false);
+      setRandomizeProgress(0);
+      setRandomizeStage('');
     }
   };
 
@@ -73,7 +151,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={handleGenerateClips}
-              disabled={isGenerating || sourceVideos.length === 0}
+              disabled={isGenerating || sourceVideos.length === 0 || isRandomizeCompiling}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               Generate Clips
@@ -82,7 +160,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
               onClick={onRandomizeAll}
               variant="outline"
               className="border-slate-600 text-slate-300"
-              disabled={isGenerating}
+              disabled={isGenerating || isRandomizeCompiling}
             >
               <Shuffle className="w-4 h-4 mr-2" />
               Randomize
@@ -99,6 +177,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
             <Select 
               value={timedRandomizeDuration.toString()} 
               onValueChange={(value) => setTimedRandomizeDuration(Number(value) as 1 | 2 | 5)}
+              disabled={isRandomizeCompiling}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -111,20 +190,27 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
             </Select>
             <Button
               onClick={() => handleTimedRandomizeAndCompile(timedRandomizeDuration)}
-              disabled={isGenerating || sourceVideos.length === 0}
+              disabled={isGenerating || sourceVideos.length === 0 || isRandomizeCompiling}
               className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold"
             >
               <Clock className="w-4 h-4 mr-2" />
-              Randomize & Compile ({timedRandomizeDuration} min)
+              {isRandomizeCompiling ? 'Processing...' : `Randomize & Compile (${timedRandomizeDuration} min)`}
             </Button>
           </div>
         </div>
-        
-        {/* Progress and Cancel */}
-        {isGenerating && (
+
+        {/* Enhanced Progress Display */}
+        {(isGenerating || isRandomizeCompiling) && (
           <div className="border-t border-slate-600 pt-4">
-            <div className="text-center text-sm text-slate-300 space-y-3">
-              <div>Processing... {Math.round(generationProgress)}%</div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm text-slate-300">
+                <span>{isRandomizeCompiling ? randomizeStage : 'Processing...'}</span>
+                <span>{Math.round(isRandomizeCompiling ? randomizeProgress : generationProgress)}%</span>
+              </div>
+              <Progress 
+                value={isRandomizeCompiling ? randomizeProgress : generationProgress} 
+                className="h-2 bg-slate-600"
+              />
               <Button
                 onClick={onCancelProcessing}
                 variant="destructive"

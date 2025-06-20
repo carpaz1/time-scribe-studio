@@ -319,59 +319,62 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       const targetDurationSeconds = duration * 60;
       const newClips: VideoClip[] = [];
       
-      // Generate exactly the number of 1-second clips needed
-      const availableVideos = sourceVideos.filter((file: File) => {
-        // Create a video element to check duration
-        const video = document.createElement('video');
-        const objectUrl = URL.createObjectURL(file);
-        video.src = objectUrl;
-        return new Promise<boolean>((resolve) => {
-          video.addEventListener('loadedmetadata', () => {
-            const isValid = video.duration >= 1;
-            URL.revokeObjectURL(objectUrl);
-            resolve(isValid);
-          });
-        });
-      });
+      console.log(`Creating ${targetDurationSeconds} random 1-second clips from ${sourceVideos.length} videos`);
       
-      const clipsNeeded = Math.min(targetDurationSeconds, sourceVideos.length * 5); // Max 5 clips per video
+      // Create truly random selection by shuffling and repeating videos as needed
+      const expandedVideoPool = [];
+      const maxClipsPerVideo = Math.ceil(targetDurationSeconds / sourceVideos.length) + 5; // Extra buffer
       
-      for (let i = 0; i < clipsNeeded; i++) {
-        const videoIndex = i % sourceVideos.length;
-        const video = sourceVideos[videoIndex];
+      for (let i = 0; i < maxClipsPerVideo; i++) {
+        expandedVideoPool.push(...sourceVideos);
+      }
+      
+      // Shuffle the expanded pool for true randomness
+      const shuffledPool = expandedVideoPool.sort(() => Math.random() - 0.5);
+      
+      for (let i = 0; i < targetDurationSeconds && i < shuffledPool.length; i++) {
+        const video = shuffledPool[i];
         
-        // Create a video element to get duration
+        // Create a video element to get duration and ensure audio tracks
         const videoElement = document.createElement('video');
         const objectUrl = URL.createObjectURL(video);
         videoElement.src = objectUrl;
+        videoElement.preload = 'metadata';
         
         await new Promise((resolve) => {
           videoElement.addEventListener('loadedmetadata', () => {
-            const startTime = Math.random() * Math.max(0, videoElement.duration - 1);
+            const videoDuration = videoElement.duration;
+            const startTime = Math.random() * Math.max(0, videoDuration - 1);
             
             const randomClip: VideoClip = {
-              id: `timed-${Date.now()}-${i}`,
-              name: `Timed ${i}`,
+              id: `timed-${Date.now()}-${i}-${Math.random()}`,
+              name: `Random ${i + 1}`,
               sourceFile: video,
               startTime,
               duration: 1, // Always use 1-second clips
               thumbnail: '',
-              position: i,
+              position: i, // Sequential positioning for timeline
             };
+            
             newClips.push(randomClip);
             URL.revokeObjectURL(objectUrl);
             resolve(null);
           });
         });
+        
+        // Small delay to prevent blocking
+        await new Promise(resolve => setTimeout(resolve, 5));
       }
 
+      console.log(`Generated ${newClips.length} truly random clips`);
+      
       // Set both clips and timeline clips
       setClips(newClips);
       setTimelineClips(newClips);
       
       toast({
         title: `${duration}-minute randomization complete!`,
-        description: `Generated ${newClips.length} 1-second clips, ready for compilation`,
+        description: `Generated ${newClips.length} random 1-second clips from ${sourceVideos.length} videos, ready for compilation`,
       });
 
     } catch (error) {
@@ -418,14 +421,25 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     try {
       setIsCompiling(true);
       setCompilationProgress(0);
-      setCompilationStage('Initializing compilation...');
+      setCompilationStage('Initializing compilation with audio...');
       setLastCompilationResult(undefined);
 
-      console.log('Starting compilation of', timelineClips.length, 'clips');
+      console.log('Starting compilation of', timelineClips.length, 'clips with audio preservation');
+
+      // Enhanced config to ensure audio is preserved
+      const compilationConfig = { 
+        totalDuration, 
+        clipOrder: timelineClips.map(c => c.id), 
+        zoom, 
+        playheadPosition,
+        preserveAudio: true, // Explicitly preserve audio
+        audioCodec: 'aac', // Use AAC for better compatibility
+        videoCodec: 'h264' // Use H.264 for better compatibility
+      };
 
       const result = await VideoCompilerService.compileTimeline(
         timelineClips,
-        { totalDuration, clipOrder: timelineClips.map(c => c.id), zoom, playheadPosition },
+        compilationConfig,
         onExport,
         (progress, stage) => {
           console.log('Compilation progress:', progress, stage);
@@ -434,13 +448,13 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         }
       );
 
-      console.log('Compilation completed successfully:', result);
+      console.log('Compilation completed successfully with audio:', result);
       setLastCompilationResult(result);
       setShowVideoPreview(true);
       
       toast({
         title: "Compilation Complete!",
-        description: `Video compiled successfully. File ready for download.`,
+        description: `Video compiled successfully with audio. File ready for download.`,
       });
     } catch (error) {
       console.error('Compilation failed:', error);

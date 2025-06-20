@@ -137,50 +137,67 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     setProcessingCancelled(false);
     
     try {
-      // Generate 3 random 1-second clips from every video
-      const randomClips: VideoClip[] = [];
+      console.log(`RANDOM EVERYTHING: Generating clips from ${sourceVideos.length} videos`);
       
-      sourceVideos.forEach((video, videoIndex) => {
+      // Generate truly random clips from all videos
+      const randomClips: VideoClip[] = [];
+      const maxClipsPerVideo = 5;
+      const totalPossibleClips = sourceVideos.length * maxClipsPerVideo;
+      
+      // Create an expanded and shuffled pool for true randomness
+      const videoPool = [];
+      for (let i = 0; i < maxClipsPerVideo; i++) {
+        videoPool.push(...sourceVideos);
+      }
+      
+      // Shuffle the entire pool
+      const shuffledPool = videoPool.sort(() => Math.random() - 0.5);
+      
+      // Take clips from the shuffled pool (limit to 199 for compilation)
+      const clipsToGenerate = Math.min(199, shuffledPool.length);
+      
+      for (let i = 0; i < clipsToGenerate; i++) {
         if (processingCancelled) return;
         
-        for (let clipIndex = 0; clipIndex < 3; clipIndex++) {
-          const startTime = Math.random() * Math.max(0, video.duration - 1);
-          
-          const randomClip: VideoClip = {
-            id: `random-${Date.now()}-${videoIndex}-${clipIndex}`,
-            name: `Random ${videoIndex}-${clipIndex}`,
-            sourceFile: video.file,
-            startTime,
-            duration: 1, // Always use 1-second clips
-            thumbnail: video.thumbnail,
-            position: clipIndex,
-            originalVideoId: video.id,
-          };
-          randomClips.push(randomClip);
-        }
-      });
+        const video = shuffledPool[i];
+        const startTime = Math.random() * Math.max(0, video.duration - 1);
+        
+        const randomClip: VideoClip = {
+          id: `random-everything-${Date.now()}-${i}-${Math.random()}`,
+          name: `Random ${i}`,
+          sourceFile: video.file,
+          startTime,
+          duration: 1, // Always use 1-second clips
+          thumbnail: video.thumbnail,
+          position: i,
+          originalVideoId: video.id,
+        };
+        randomClips.push(randomClip);
+      }
 
       if (processingCancelled) return;
 
-      // Limit to 199 clips for compilation
-      const limitedClips = randomClips.slice(0, 199);
-      onClipsUpdate(limitedClips);
+      console.log(`Generated ${randomClips.length} truly random clips`);
+      onClipsUpdate(randomClips);
       
       const config = {
-        totalDuration: limitedClips.length,
-        clipOrder: limitedClips.map(clip => clip.id),
+        totalDuration: randomClips.length,
+        clipOrder: randomClips.map(clip => clip.id),
         zoom: 1,
         playheadPosition: 0,
+        preserveAudio: true, // Ensure audio is preserved
+        audioCodec: 'aac',
+        videoCodec: 'h264'
       };
 
       toast({
         title: "RANDOM EVERYTHING initiated!",
-        description: `Generated ${limitedClips.length} random 1-second clips and starting compilation...`,
+        description: `Generated ${randomClips.length} truly random 1-second clips and starting compilation...`,
       });
 
       if (!processingCancelled) {
         await VideoCompilerService.compileTimeline(
-          limitedClips,
+          randomClips,
           config,
           undefined,
           (progress: number, stage: string) => {
@@ -193,7 +210,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         if (!processingCancelled) {
           toast({
             title: "RANDOM EVERYTHING complete!",
-            description: "Your random video compilation is ready for download!",
+            description: "Your random video compilation with audio is ready for download!",
           });
         }
       }
