@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,28 +17,34 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
   // Enhanced video format validation
   const SUPPORTED_VIDEO_FORMATS = [
     'video/mp4',
-    'video/avi',
+    'video/avi', 
     'video/mov',
-    'video/wmv',
-    'video/flv',
-    'video/webm',
-    'video/mkv',
-    'video/m4v',
-    'video/3gp'
+    'video/webm'
   ];
 
   const SUPPORTED_EXTENSIONS = [
-    '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv', '.m4v', '.3gp'
+    '.mp4', '.avi', '.mov', '.webm'
+  ];
+
+  const BLOCKED_EXTENSIONS = [
+    '.wmv', '.flv', '.mkv', '.m4v', '.3gp', '.asf', '.rm', '.rmvb'
   ];
 
   const isValidVideoFile = (file: File): boolean => {
+    const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    // Block known problematic formats
+    if (BLOCKED_EXTENSIONS.includes(extension)) {
+      console.warn('VideoUploader: Blocked problematic format:', file.name, extension);
+      return false;
+    }
+    
     // Check MIME type first
     if (SUPPORTED_VIDEO_FORMATS.includes(file.type)) {
       return true;
     }
 
-    // Fallback to extension check for files with missing/incorrect MIME types
-    const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    // Fallback to extension check for supported formats only
     return SUPPORTED_EXTENSIONS.includes(extension);
   };
 
@@ -51,15 +56,22 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         return resolve(false);
       }
 
-      // Size check (max 10GB)
-      if (file.size > 10 * 1024 * 1024 * 1024) {
+      // Size check (max 5GB to avoid memory issues)
+      if (file.size > 5 * 1024 * 1024 * 1024) {
         console.warn('VideoUploader: File too large:', file.name, file.size);
         return resolve(false);
       }
 
-      // Quick video validation using video element
+      // Minimum size check (avoid empty or tiny files)
+      if (file.size < 1024) {
+        console.warn('VideoUploader: File too small:', file.name, file.size);
+        return resolve(false);
+      }
+
+      // Quick video validation using video element with stricter timeout
       const video = document.createElement('video');
       video.preload = 'metadata';
+      video.muted = true;
       
       const objectUrl = URL.createObjectURL(file);
       video.src = objectUrl;
@@ -73,12 +85,24 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         console.warn('VideoUploader: Video validation timeout for:', file.name);
         cleanup();
         resolve(false);
-      }, 3000);
+      }, 2000); // Reduced timeout to 2 seconds
 
       video.addEventListener('loadedmetadata', () => {
         clearTimeout(timeout);
-        const isValid = video.duration > 0 && !isNaN(video.duration);
-        console.log('VideoUploader: Video validation result for:', file.name, isValid);
+        
+        // Additional validation checks
+        const isValid = video.duration > 0.1 && 
+                        !isNaN(video.duration) && 
+                        video.videoWidth > 0 && 
+                        video.videoHeight > 0;
+        
+        console.log('VideoUploader: Video validation result for:', file.name, {
+          duration: video.duration,
+          width: video.videoWidth,
+          height: video.videoHeight,
+          isValid
+        });
+        
         cleanup();
         resolve(isValid);
       }, { once: true });
@@ -94,12 +118,18 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
 
   const handleFileUpload = async (files: FileList) => {
     const validFiles: File[] = [];
-    const invalidFiles: string[] = [];
+    const skippedFiles: { name: string; reason: string }[] = [];
     
     console.log('VideoUploader: Processing', files.length, 'files');
     
     for (const file of Array.from(files)) {
       console.log('VideoUploader: Checking file:', file.name, 'Type:', file.type, 'Size:', file.size);
+      
+      // Skip hidden files and system files
+      if (file.name.startsWith('.') || file.name.startsWith('~')) {
+        skippedFiles.push({ name: file.name, reason: 'Hidden/system file' });
+        continue;
+      }
       
       const isValid = await validateVideoFile(file);
       
@@ -107,17 +137,20 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         validFiles.push(file);
         console.log('VideoUploader: Added valid file:', file.name);
       } else {
-        invalidFiles.push(file.name);
-        console.log('VideoUploader: Skipped invalid file:', file.name);
+        const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+        const reason = BLOCKED_EXTENSIONS.includes(extension) ? 'Unsupported format' : 'Corrupted or invalid';
+        skippedFiles.push({ name: file.name, reason });
+        console.log('VideoUploader: Skipped invalid file:', file.name, reason);
       }
     }
     
-    if (invalidFiles.length > 0) {
+    if (skippedFiles.length > 0) {
       toast({
         title: "Some files were skipped",
-        description: `${invalidFiles.length} unsupported or corrupted files were skipped. Supported formats: MP4, AVI, MOV, WMV, FLV, WebM, MKV, M4V, 3GP`,
+        description: `${skippedFiles.length} files skipped. Only MP4, AVI, MOV, and WebM files are supported.`,
         variant: "destructive",
       });
+      console.log('VideoUploader: Skipped files:', skippedFiles);
     }
     
     if (validFiles.length > 0) {
@@ -131,7 +164,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     } else if (files.length > 0) {
       toast({
         title: "No valid videos found",
-        description: "Please select supported video files (MP4, AVI, MOV, etc.)",
+        description: "Please select supported video files (MP4, AVI, MOV, WebM only)",
         variant: "destructive",
       });
     }
@@ -196,14 +229,14 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
           Drag & drop or click to browse
         </p>
         <p className="text-xs text-slate-500 mt-1">
-          Supports: MP4, AVI, MOV, WMV, FLV, WebM, MKV, M4V, 3GP
+          Supports: MP4, AVI, MOV, WebM only
         </p>
       </div>
       
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/*"
+        accept=".mp4,.avi,.mov,.webm"
         multiple
         onChange={handleFileInputChange}
         className="hidden"

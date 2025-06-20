@@ -81,8 +81,8 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 * 1024, // 10GB per file
-    fieldSize: 10 * 1024 * 1024 * 1024, // 10GB for form fields
+    fileSize: 5 * 1024 * 1024 * 1024, // Reduced to 5GB per file
+    fieldSize: 5 * 1024 * 1024 * 1024, // 5GB for form fields
     fields: 100, // Allow many form fields
     files: 200 // Increased from 50 to 200 files
   }
@@ -135,7 +135,7 @@ app.post('/upload', (req, res, next) => {
     if (err) {
       console.error('[UPLOAD] Multer error:', err);
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ error: 'File too large. Maximum size is 10GB per file.' });
+        return res.status(413).json({ error: 'File too large. Maximum size is 5GB per file.' });
       }
       if (err.code === 'LIMIT_FIELD_SIZE') {
         return res.status(413).json({ error: 'Form field too large.' });
@@ -500,8 +500,28 @@ async function processVideoCompilation(jobId, files, clipsData) {
       return;
     }
     
-    compilationProgress.set(jobId, { percent: 10, stage: 'Preparing clips...' });
+    compilationProgress.set(jobId, { percent: 10, stage: 'Validating video files...' });
     console.log(`[PROCESS] Progress set to 10% for job: ${jobId}`);
+
+    // Pre-validate all files first
+    const validatedFiles = [];
+    for (const file of files) {
+      const isValid = await validateVideoFile(file.path);
+      if (isValid) {
+        validatedFiles.push(file);
+      } else {
+        console.warn(`[PROCESS] Pre-validation failed for: ${file.originalname}`);
+      }
+    }
+
+    if (validatedFiles.length === 0) {
+      const errorMsg = 'No valid video files found - all files are corrupted or unsupported';
+      console.error(`[ERROR] ${errorMsg} for job: ${jobId}`);
+      compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + errorMsg });
+      return;
+    }
+
+    console.log(`[PROCESS] Pre-validated ${validatedFiles.length}/${files.length} files`);
 
     // Generate output filename
     const outputFilename = `compiled-${Date.now()}.mp4`;
@@ -517,26 +537,18 @@ async function processVideoCompilation(jobId, files, clipsData) {
     let skippedCount = 0;
 
     for (const clip of sortedClips) {
-      const file = files[clip.fileIndex];
+      const file = validatedFiles[clip.fileIndex];
       if (!file || !fs.existsSync(file.path)) {
         console.error(`[PROCESS] Invalid file for clip ${clip.id}:`, file?.path || 'undefined');
         skippedCount++;
         continue;
       }
 
-      // Quick file validation
+      // Additional file validation
       try {
         const stats = fs.statSync(file.path);
         if (stats.size === 0) {
           console.error(`[PROCESS] Empty file for clip ${clip.id}:`, file.path);
-          skippedCount++;
-          continue;
-        }
-
-        // Basic video file validation using ffprobe equivalent
-        const isValidVideo = await validateVideoFile(file.path);
-        if (!isValidVideo) {
-          console.error(`[PROCESS] Invalid video file for clip ${clip.id}:`, file.path);
           skippedCount++;
           continue;
         }
@@ -576,10 +588,10 @@ async function processVideoCompilation(jobId, files, clipsData) {
     // Process based on clip count
     if (validClips.length === 1) {
       console.log(`[PROCESS] Processing single clip for job: ${jobId}`);
-      await processSingleClipSafe(jobId, validClips[0], files, outputPath, videoSettings);
+      await processSingleClipSafe(jobId, validClips[0], validatedFiles, outputPath, videoSettings);
     } else {
       console.log(`[PROCESS] Processing multiple clips for job: ${jobId}`);
-      await processMultipleClipsSafe(jobId, validClips, files, outputPath, videoSettings);
+      await processMultipleClipsSafe(jobId, validClips, validatedFiles, outputPath, videoSettings);
     }
 
     // Check for cancellation before completing
@@ -631,7 +643,7 @@ async function processVideoCompilation(jobId, files, clipsData) {
   }
 }
 
-// Add video validation function
+// Enhanced video validation function
 async function validateVideoFile(filePath) {
   return new Promise((resolve) => {
     const probe = ffmpeg.ffprobe(filePath, (err, metadata) => {
@@ -656,7 +668,23 @@ async function validateVideoFile(filePath) {
           return;
         }
 
-        console.log(`[VALIDATE] Valid video file: ${filePath} (${duration}s)`);
+        // Check for valid codec
+        const codec = videoStream.codec_name;
+        const supportedCodecs = ['h264', 'h265', 'hevc', 'vp8', 'vp9', 'av1'];
+        if (!supportedCodecs.includes(codec)) {
+          console.warn(`[VALIDATE] Unsupported codec for ${filePath}:`, codec);
+          resolve(false);
+          return;
+        }
+
+        // Check dimensions
+        if (!videoStream.width || !videoStream.height || videoStream.width < 64 || videoStream.height < 64) {
+          console.warn(`[VALIDATE] Invalid dimensions for ${filePath}:`, videoStream.width, 'x', videoStream.height);
+          resolve(false);
+          return;
+        }
+
+        console.log(`[VALIDATE] Valid video file: ${filePath} (${duration}s, ${videoStream.width}x${videoStream.height}, ${codec})`);
         resolve(true);
       } catch (parseError) {
         console.warn(`[VALIDATE] Metadata parsing error for ${filePath}:`, parseError);
@@ -668,7 +696,7 @@ async function validateVideoFile(filePath) {
     setTimeout(() => {
       probe.kill();
       resolve(false);
-    }, 10000);
+    }, 5000); // Reduced timeout
   });
 }
 
@@ -985,7 +1013,7 @@ app.listen(PORT, () => {
   console.log(`Uploads directory: ${uploadsDir}`);
   console.log(`Output directory: ${outputDir}`);
   console.log(`Server ready to accept compilation requests!`);
-  console.log(`Maximum file size: 10GB per file`);
+  console.log(`Maximum file size: 5GB per file`);
   console.log(`Maximum total upload: 50GB`);
   console.log(`Request timeout: 10 minutes`);
   console.log('======================================\n');
