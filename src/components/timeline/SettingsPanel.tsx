@@ -228,7 +228,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
           <Card className="bg-slate-700/50 border-slate-600">
             <CardHeader>
               <CardTitle className="text-lg text-white flex items-center gap-2">
-                <GitPull className="w-5 h-5" />
+                <Download className="w-5 h-5" />
                 Git Repository Updates
               </CardTitle>
             </CardHeader>
