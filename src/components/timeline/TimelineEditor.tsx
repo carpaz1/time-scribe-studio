@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -602,6 +603,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
                 onClipDragEnd={handleClipDragEnd}
                 onClipRemove={handleClipRemove}
                 onPlayheadMove={setPlayheadPosition}
+                onZoomChange={setZoom}
               />
               
               {/* Controls */}
