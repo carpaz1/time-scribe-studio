@@ -51,6 +51,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
   };
 
   const handleQuickGenerate = () => {
+    console.log(`Starting quick generate for ${selectedDuration} minute(s), includePictures: ${includePictures}`);
     onQuickRandomize(selectedDuration, includePictures);
   };
 
@@ -132,6 +133,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 id="include-pictures" 
                 checked={includePictures}
                 onCheckedChange={handlePicturesToggle}
+                disabled={isProcessing}
               />
               <label 
                 htmlFor="include-pictures" 
@@ -169,8 +171,19 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                   className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-xs px-2 py-1 h-8"
                 >
                   <Zap className="w-3 h-3 mr-1" />
-                  {isProcessing ? 'Processing...' : `Generate & Compile ${selectedDuration}min`}
+                  {isProcessing ? `Processing... ${Math.round(processingProgress)}%` : `Generate & Compile ${selectedDuration}min`}
                 </Button>
+                
+                {/* Show detailed progress when processing */}
+                {isProcessing && (
+                  <div className="space-y-2 p-3 bg-slate-700/30 rounded">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span className="truncate pr-2 flex-1">{processingStage || 'Processing...'}</span>
+                      <span className="whitespace-nowrap">{Math.round(processingProgress)}%</span>
+                    </div>
+                    <Progress value={processingProgress} className="h-2 bg-slate-600" />
+                  </div>
+                )}
               </TabsContent>
               
               <TabsContent value="custom" className="space-y-3 mt-3">
@@ -190,9 +203,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
           </div>
         )}
 
-        {/* Processing Status */}
+        {/* Processing Status (Global) */}
         {isProcessing && (
-          <div className="space-y-3">
+          <div className="space-y-3 border-t border-slate-600 pt-3">
             <div className="flex items-center justify-between text-xs text-slate-300">
               <span className="truncate pr-2 flex-1">{processingStage}</span>
               <span className="whitespace-nowrap">{Math.round(processingProgress)}%</span>

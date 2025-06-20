@@ -469,6 +469,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   };
 
   const handleQuickRandomize = async (duration: number, includePictures: boolean = false) => {
+    console.log('=== QUICK RANDOMIZE START ===');
+    console.log('Duration:', duration, 'Include Pictures:', includePictures);
+    
     if (sourceVideos.length === 0) {
       toast({
         title: "No videos available",
@@ -479,6 +482,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     }
 
     setIsGenerating(true);
+    setGenerationProgress(0);
     
     try {
       // Filter media based on includePictures setting
@@ -512,6 +516,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       
       // Shuffle the expanded pool for true randomness
       const shuffledPool = expandedFilePool.sort(() => Math.random() - 0.5);
+      
+      // Update progress for clip generation phase
+      setGenerationProgress(5);
       
       for (let i = 0; i < targetClipCount && i < shuffledPool.length; i++) {
         const file = shuffledPool[i];
@@ -557,8 +564,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
           });
         }
         
-        // Update progress
-        const progress = ((i + 1) / targetClipCount) * 50; // 50% for clip generation
+        // Update progress during generation (5% to 30%)
+        const progress = 5 + ((i + 1) / targetClipCount) * 25;
         setGenerationProgress(progress);
         
         // Small delay to prevent blocking
@@ -571,19 +578,61 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       setClips(newClips);
       setTimelineClips(newClips);
       
-      // Automatically start compilation after generation
-      setGenerationProgress(75);
+      // Update progress before compilation
+      setGenerationProgress(35);
       console.log('Starting automatic compilation...');
       
       // Small delay before compilation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Start compilation
-      await handleCompile();
+      // Start compilation process
+      setIsCompiling(true);
+      setCompilationProgress(0);
+      setCompilationStage('Starting compilation...');
+      setLastCompilationResult(undefined);
+
+      console.log('Starting compilation of', newClips.length, 'clips with audio preservation');
+
+      // Enhanced config to ensure audio is preserved
+      const compilationConfig = { 
+        totalDuration: newClips.length, 
+        clipOrder: newClips.map(c => c.id), 
+        zoom, 
+        playheadPosition,
+        preserveAudio: true,
+        audioCodec: 'aac',
+        videoCodec: 'h264'
+      };
+
+      const result = await VideoCompilerService.compileTimeline(
+        newClips,
+        compilationConfig,
+        onExport,
+        (progress, stage) => {
+          console.log('Compilation progress:', progress, stage);
+          setCompilationProgress(progress);
+          setCompilationStage(stage);
+          // Also update generation progress for unified display
+          setGenerationProgress(35 + (progress * 0.65)); // 35% + 65% for compilation
+        }
+      );
+
+      console.log('Compilation completed successfully:', result);
+      setLastCompilationResult(result);
+      setShowVideoPreview(true);
       
       toast({
         title: `${duration}-minute video complete!`,
-        description: `Generated and compiled ${newClips.length} clips${includePictures ? ' (including images)' : ''} into a ${duration}-minute video`,
+        description: `Generated and compiled ${newClips.length} clips${includePictures ? ' (including images)' : ''} into a ${duration}-minute video. Click to preview!`,
+        action: result.downloadUrl ? (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowVideoPreview(true)}
+          >
+            Preview
+          </Button>
+        ) : undefined,
       });
 
     } catch (error) {
@@ -595,7 +644,10 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       });
     } finally {
       setIsGenerating(false);
+      setIsCompiling(false);
       setGenerationProgress(0);
+      setCompilationProgress(0);
+      setCompilationStage('');
     }
   };
 
