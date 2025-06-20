@@ -21,7 +21,7 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Find and load current clip
+  // Real-time preview - Find and load current clip
   useEffect(() => {
     console.log('CleanVideoPlayer: Looking for clip at time:', currentTime);
     console.log('CleanVideoPlayer: Available clips:', clips.map(c => ({ id: c.id, position: c.position, duration: c.duration })));
@@ -33,7 +33,7 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
     console.log('CleanVideoPlayer: Found active clip:', activeClip?.name);
 
     if (activeClip && activeClip.id !== currentClip?.id) {
-      console.log('CleanVideoPlayer: Loading new clip:', activeClip.name);
+      console.log('CleanVideoPlayer: Loading new clip for REAL-TIME preview:', activeClip.name);
       setCurrentClip(activeClip);
       setIsLoading(true);
       
@@ -45,14 +45,14 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
         const newSrc = URL.createObjectURL(activeClip.sourceFile);
         setVideoSrc(newSrc);
         setError('');
-        console.log('CleanVideoPlayer: Created video src for:', activeClip.name);
+        console.log('CleanVideoPlayer: Created video src for REAL-TIME preview:', activeClip.name);
       } catch (err) {
-        console.error('CleanVideoPlayer: Error loading video:', err);
+        console.error('CleanVideoPlayer: Error loading video for preview:', err);
         setError('Failed to load video file');
         setIsLoading(false);
       }
     } else if (!activeClip && currentClip) {
-      console.log('CleanVideoPlayer: No active clip, clearing');
+      console.log('CleanVideoPlayer: No active clip, clearing preview');
       setCurrentClip(null);
       if (videoSrc) {
         URL.revokeObjectURL(videoSrc);
@@ -140,7 +140,7 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
         <>
           {isLoading && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
-              <div className="text-white">Loading video...</div>
+              <div className="text-white">Loading preview...</div>
             </div>
           )}
           <video
@@ -162,10 +162,10 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
       ) : (
         <div className="text-gray-400 text-center">
           <div className="text-6xl mb-4">🎬</div>
-          <p className="text-xl mb-2">Video Player Ready</p>
-          <p className="text-sm">Add clips to timeline to start preview</p>
+          <p className="text-xl mb-2">Real-Time Video Preview</p>
+          <p className="text-sm">Add clips to timeline for instant preview</p>
           {clips.length > 0 && (
-            <p className="text-xs text-gray-500 mt-2">{clips.length} clips loaded</p>
+            <p className="text-xs text-gray-500 mt-2">{clips.length} clips ready for preview</p>
           )}
         </div>
       )}

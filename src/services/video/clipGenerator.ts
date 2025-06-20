@@ -1,3 +1,4 @@
+
 import { VideoClip } from '@/types/timeline';
 
 export class ClipGenerator {
@@ -5,7 +6,7 @@ export class ClipGenerator {
     sourceVideos: File[],
     targetDuration: number,
     clipsPerVideo: number = 3,
-    clipDuration: number = 1, // Changed to 1 second for accurate calculation
+    clipDuration: number = 1,
     onProgress?: (progress: number, stage: string) => void
   ): Promise<VideoClip[]> {
     console.log('ClipGenerator: Generating clips from videos...');
@@ -16,21 +17,19 @@ export class ClipGenerator {
       throw new Error('No source videos available');
     }
 
-    // Calculate exactly how many clips we need to reach target duration
-    const totalClipsNeeded = Math.ceil(targetDuration / clipDuration);
-    console.log('ClipGenerator: Total clips needed for target duration:', totalClipsNeeded);
+    // Calculate exactly how many clips we need - MUST equal target duration
+    const totalClipsNeeded = Math.round(targetDuration / clipDuration);
+    console.log('ClipGenerator: EXACT clips needed for target duration:', totalClipsNeeded);
 
     const clips: VideoClip[] = [];
     
     onProgress?.(10, 'Creating video clips...');
 
-    // Generate clips by cycling through videos until we have enough
+    // Generate clips by cycling through videos until we have EXACTLY the right number
     let clipsGenerated = 0;
     let videoIndex = 0;
-    let attempts = 0;
-    const maxAttempts = totalClipsNeeded * 2; // Safety limit
 
-    while (clipsGenerated < totalClipsNeeded && attempts < maxAttempts) {
+    while (clipsGenerated < totalClipsNeeded) {
       const file = sourceVideos[videoIndex % sourceVideos.length];
       console.log(`ClipGenerator: Processing file ${videoIndex % sourceVideos.length + 1}/${sourceVideos.length}: ${file.name} (clip ${clipsGenerated + 1}/${totalClipsNeeded})`);
       
@@ -49,7 +48,7 @@ export class ClipGenerator {
           duration: actualClipDuration,
           thumbnail: '',
           sourceFile: file,
-          position: clipsGenerated * clipDuration, // Sequential positioning
+          position: clipsGenerated * clipDuration, // Exact sequential positioning
           originalVideoId: `video_${videoIndex % sourceVideos.length}`
         };
 
@@ -59,11 +58,11 @@ export class ClipGenerator {
         console.log(`ClipGenerator: Created clip ${clipsGenerated}/${totalClipsNeeded}:`, clip.name, `Duration: ${clip.duration}s, Position: ${clip.position}s`);
 
         const progress = 10 + ((clipsGenerated / totalClipsNeeded) * 20);
-        onProgress?.(progress, `Generated ${clipsGenerated}/${totalClipsNeeded} clips (${Math.round(clipsGenerated * clipDuration)}s/${targetDuration}s)`);
+        onProgress?.(progress, `Generated ${clipsGenerated}/${totalClipsNeeded} clips (${clipsGenerated}s/${targetDuration}s)`);
 
       } catch (error) {
         console.error(`ClipGenerator: Error generating clip from ${file.name}:`, error);
-        // Create a fallback clip to maintain count accuracy
+        // Create a fallback clip to maintain EXACT count
         const fallbackClip: VideoClip = {
           id: `fallback_clip_${Date.now()}_${clipsGenerated}_${Math.random().toString(36).substr(2, 9)}`,
           name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${clipsGenerated + 1}`,
@@ -79,12 +78,16 @@ export class ClipGenerator {
       }
 
       videoIndex++;
-      attempts++;
     }
 
     const totalGeneratedDuration = clips.length * clipDuration;
-    console.log(`ClipGenerator: Successfully generated ${clips.length} clips from ${sourceVideos.length} videos`);
+    console.log(`ClipGenerator: Successfully generated EXACTLY ${clips.length} clips from ${sourceVideos.length} videos`);
     console.log(`ClipGenerator: Total duration: ${totalGeneratedDuration}s (target was ${targetDuration}s)`);
+    
+    // Verify we have exact count
+    if (clips.length !== totalClipsNeeded) {
+      console.error(`ClipGenerator: MISMATCH - Generated ${clips.length} clips but needed ${totalClipsNeeded}`);
+    }
     
     onProgress?.(30, `Generated ${clips.length} clips! Total duration: ${totalGeneratedDuration}s`);
     return clips;

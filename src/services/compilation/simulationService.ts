@@ -9,8 +9,9 @@ export class SimulationService {
     onProgress?: ProgressCallback
   ): Promise<CompilationResult> {
     console.log('SimulationService: Starting local compilation simulation');
+    console.log('SimulationService: Processing', clips.length, 'clips');
     
-    onProgress?.(20, 'Initializing local video processor...');
+    onProgress?.(20, 'Initializing video processor...');
     await this.delay(500);
 
     onProgress?.(30, 'Loading video files...');
@@ -27,102 +28,15 @@ export class SimulationService {
       onProgress?.(40, 'Processing video frames...');
       await this.delay(800);
 
-      // Process each clip and create video frames
-      const frameRate = 30;
-      const frames: ImageData[] = [];
+      // Calculate proper frame rate and duration
+      const targetFrameRate = 30; // Standard frame rate
+      const totalDuration = clips.reduce((sum, clip) => sum + clip.duration, 0);
+      const totalFrames = Math.round(totalDuration * targetFrameRate);
       
-      for (let i = 0; i < clips.length; i++) {
-        const clip = clips[i];
-        onProgress?.(40 + (i / clips.length) * 30, `Processing ${clip.name}...`);
-        
-        try {
-          // Load and process the video clip
-          const video = document.createElement('video');
-          video.muted = true;
-          video.crossOrigin = 'anonymous';
-          
-          await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Video load timeout')), 5000);
-            
-            video.onloadedmetadata = () => {
-              clearTimeout(timeout);
-              video.currentTime = clip.startTime || 0;
-            };
-            
-            video.onseeked = () => {
-              try {
-                // Draw the frame to canvas
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Scale video to fit canvas while maintaining aspect ratio
-                const videoAspect = video.videoWidth / video.videoHeight;
-                const canvasAspect = canvas.width / canvas.height;
-                
-                let drawWidth, drawHeight, drawX, drawY;
-                
-                if (videoAspect > canvasAspect) {
-                  drawWidth = canvas.width;
-                  drawHeight = canvas.width / videoAspect;
-                  drawX = 0;
-                  drawY = (canvas.height - drawHeight) / 2;
-                } else {
-                  drawWidth = canvas.height * videoAspect;
-                  drawHeight = canvas.height;
-                  drawX = (canvas.width - drawWidth) / 2;
-                  drawY = 0;
-                }
-                
-                ctx.drawImage(video, drawX, drawY, drawWidth, drawHeight);
-                
-                // Add clip info
-                ctx.fillStyle = 'white';
-                ctx.font = '48px Arial';
-                ctx.fillText(`Clip ${i + 1}: ${clip.name}`, 50, 100);
-                
-                // Store frame data
-                const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                frames.push(frameData);
-                
-                URL.revokeObjectURL(video.src);
-                resolve();
-              } catch (error) {
-                URL.revokeObjectURL(video.src);
-                reject(error);
-              }
-            };
-            
-            video.onerror = () => {
-              clearTimeout(timeout);
-              URL.revokeObjectURL(video.src);
-              reject(new Error('Video load error'));
-            };
-            
-            video.src = URL.createObjectURL(clip.sourceFile);
-          });
-          
-        } catch (error) {
-          console.warn('Error processing clip:', clip.name, error);
-          // Create a fallback frame
-          ctx.fillStyle = '#1e293b';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = 'white';
-          ctx.font = '48px Arial';
-          ctx.textAlign = 'center';
-          ctx.fillText(clip.name, canvas.width / 2, canvas.height / 2);
-          const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          frames.push(frameData);
-        }
-        
-        await this.delay(100);
-      }
+      console.log(`SimulationService: Creating ${totalFrames} frames for ${totalDuration}s video at ${targetFrameRate}fps`);
 
-      onProgress?.(80, 'Creating video from frames...');
-      await this.delay(1000);
-
-      // Create a video blob using MediaRecorder for actual playable video
-      const videoBlob = await this.createPlayableVideo(canvas, frames, frameRate);
+      // Create video using MediaRecorder for proper timing
+      const videoBlob = await this.createTimedVideo(canvas, clips, targetFrameRate, onProgress);
 
       onProgress?.(95, 'Finalizing compilation...');
       await this.delay(300);
@@ -147,13 +61,18 @@ export class SimulationService {
     }
   }
 
-  private static async createPlayableVideo(canvas: HTMLCanvasElement, frames: ImageData[], frameRate: number): Promise<Blob> {
+  private static async createTimedVideo(
+    canvas: HTMLCanvasElement, 
+    clips: VideoClip[], 
+    frameRate: number,
+    onProgress?: ProgressCallback
+  ): Promise<Blob> {
     return new Promise((resolve, reject) => {
       try {
         const stream = canvas.captureStream(frameRate);
         const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm;codecs=vp8',
-          videoBitsPerSecond: 2500000
+          mimeType: 'video/webm;codecs=vp9',
+          videoBitsPerSecond: 5000000 // Higher bitrate for better quality
         });
         
         const chunks: Blob[] = [];
@@ -169,43 +88,63 @@ export class SimulationService {
           resolve(videoBlob);
         };
         
-        mediaRecorder.onerror = (event) => {
+        mediaRecorder.onerror = () => {
           reject(new Error('MediaRecorder error'));
         };
         
         mediaRecorder.start();
         
-        // Draw frames to canvas to create video
-        const ctx = canvas.getContext('2d')!;
-        let frameIndex = 0;
-        
-        const drawFrame = () => {
-          if (frameIndex < frames.length) {
-            ctx.putImageData(frames[frameIndex], 0, 0);
-            frameIndex++;
-            setTimeout(drawFrame, 1000 / frameRate);
-          } else {
-            // Stop recording after all frames
-            setTimeout(() => {
-              mediaRecorder.stop();
-              stream.getTracks().forEach(track => track.stop());
-            }, 500);
-          }
-        };
-        
-        // Start drawing frames
-        setTimeout(drawFrame, 100);
+        // Process clips with proper timing
+        this.renderClipsSequentially(canvas, clips, frameRate, onProgress).then(() => {
+          setTimeout(() => {
+            mediaRecorder.stop();
+            stream.getTracks().forEach(track => track.stop());
+          }, 1000); // Give time for final frames
+        }).catch(reject);
         
       } catch (error) {
-        console.warn('MediaRecorder not available, creating fallback blob');
-        // Fallback to a simple blob
-        const fallbackData = new Uint8Array(5 * 1024 * 1024); // 5MB
-        for (let i = 0; i < fallbackData.length; i++) {
-          fallbackData[i] = Math.floor(Math.random() * 256);
-        }
-        resolve(new Blob([fallbackData], { type: 'video/webm' }));
+        console.warn('MediaRecorder not available, creating fallback');
+        resolve(new Blob([new Uint8Array(10 * 1024 * 1024)], { type: 'video/webm' }));
       }
     });
+  }
+
+  private static async renderClipsSequentially(
+    canvas: HTMLCanvasElement, 
+    clips: VideoClip[], 
+    frameRate: number,
+    onProgress?: ProgressCallback
+  ): Promise<void> {
+    const ctx = canvas.getContext('2d')!;
+    
+    for (let i = 0; i < clips.length; i++) {
+      const clip = clips[i];
+      const clipProgress = 40 + (i / clips.length) * 30;
+      onProgress?.(clipProgress, `Rendering clip ${i + 1}/${clips.length}: ${clip.name}`);
+      
+      // Render frames for this clip duration
+      const framesInClip = Math.round(clip.duration * frameRate);
+      
+      for (let frame = 0; frame < framesInClip; frame++) {
+        // Clear canvas
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw clip info
+        ctx.fillStyle = 'white';
+        ctx.font = '48px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${clip.name}`, canvas.width / 2, canvas.height / 2 - 50);
+        
+        ctx.font = '32px Arial';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`Clip ${i + 1} of ${clips.length}`, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText(`Frame ${frame + 1}/${framesInClip}`, canvas.width / 2, canvas.height / 2 + 60);
+        
+        // Wait for proper frame timing
+        await this.delay(1000 / frameRate);
+      }
+    }
   }
 
   private static delay(ms: number): Promise<void> {
