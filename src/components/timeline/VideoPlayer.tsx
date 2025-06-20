@@ -24,17 +24,43 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const currentBlobUrlRef = useRef<string>('');
   const pendingPlayRef = useRef<Promise<void> | null>(null);
   const isUnmountedRef = useRef(false);
+  const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Enhanced cleanup function for blob URLs
-  const cleanupBlobUrl = useCallback(() => {
+  // Enhanced cleanup function with delayed cleanup to prevent premature revocation
+  const cleanupBlobUrl = useCallback((immediate: boolean = false) => {
+    // Clear any existing cleanup timeout
+    if (cleanupTimeoutRef.current) {
+      clearTimeout(cleanupTimeoutRef.current);
+      cleanupTimeoutRef.current = null;
+    }
+
     if (currentBlobUrlRef.current) {
-      console.log('VideoPlayer: Cleaning up blob URL:', currentBlobUrlRef.current);
-      try {
-        URL.revokeObjectURL(currentBlobUrlRef.current);
-      } catch (err) {
-        console.warn('VideoPlayer: Error revoking blob URL:', err);
+      const urlToRevoke = currentBlobUrlRef.current;
+      
+      if (immediate) {
+        console.log('VideoPlayer: Immediate cleanup of blob URL:', urlToRevoke);
+        try {
+          URL.revokeObjectURL(urlToRevoke);
+        } catch (err) {
+          console.warn('VideoPlayer: Error revoking blob URL:', err);
+        }
+        currentBlobUrlRef.current = '';
+      } else {
+        // Delay cleanup to allow video to finish loading/playing
+        console.log('VideoPlayer: Scheduling delayed cleanup of blob URL:', urlToRevoke);
+        cleanupTimeoutRef.current = setTimeout(() => {
+          try {
+            URL.revokeObjectURL(urlToRevoke);
+            console.log('VideoPlayer: Delayed cleanup completed for blob URL:', urlToRevoke);
+          } catch (err) {
+            console.warn('VideoPlayer: Error in delayed cleanup:', err);
+          }
+          if (currentBlobUrlRef.current === urlToRevoke) {
+            currentBlobUrlRef.current = '';
+          }
+          cleanupTimeoutRef.current = null;
+        }, 5000); // 5 second delay to ensure video is done with the URL
       }
-      currentBlobUrlRef.current = '';
     }
   }, []);
 
@@ -46,14 +72,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, []);
 
-  // Find the current clip based on playhead position with improved logging
+  // Find the current clip based on playhead position
   useEffect(() => {
     if (clips.length === 0) {
       if (currentClip) {
         console.log('VideoPlayer: No clips available, clearing player');
         cancelPendingPlay();
         setCurrentClip(null);
-        cleanupBlobUrl();
+        cleanupBlobUrl(true); // Immediate cleanup when no clips
         setVideoSrc('');
         setError('');
       }
@@ -70,10 +96,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       // Cancel any pending operations before switching clips
       cancelPendingPlay();
       
+      // Store previous clip for delayed cleanup
+      const previousClip = currentClip;
       setCurrentClip(activeClip);
       
-      // Clean up previous URL
-      cleanupBlobUrl();
+      // Clean up previous URL with delay
+      if (previousClip) {
+        cleanupBlobUrl(false);
+      }
       
       try {
         const src = URL.createObjectURL(activeClip.sourceFile);
@@ -89,13 +119,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       console.log('VideoPlayer: No active clip at current time, clearing player');
       cancelPendingPlay();
       setCurrentClip(null);
-      cleanupBlobUrl();
+      cleanupBlobUrl(false); // Delayed cleanup when clip ends
       setVideoSrc('');
       setError('');
     }
   }, [currentTime, clips, currentClip?.id, cleanupBlobUrl, cancelPendingPlay]);
 
-  // Update video time based on clip position with better error handling
+  // Update video time based on clip position
   useEffect(() => {
     if (videoRef.current && currentClip && videoSrc && !isUnmountedRef.current) {
       const timeInClip = Math.max(0, currentTime - currentClip.position);
@@ -105,9 +135,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (Math.abs(videoRef.current.currentTime - videoTime) > 0.2 && videoRef.current.readyState >= 2) {
         try {
           videoRef.current.currentTime = videoTime;
-          console.log('VideoPlayer: Setting video time to:', videoTime.toFixed(2), 
-                      'for clip time:', timeInClip.toFixed(2), 
-                      'clip start:', currentClip.startTime);
+          console.log('VideoPlayer: Setting video time to:', videoTime.toFixed(2));
         } catch (err) {
           console.error('VideoPlayer: Error setting video time:', err);
         }
@@ -115,7 +143,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [currentTime, currentClip, videoSrc]);
 
-  // Handle play/pause with proper race condition handling
+  // Handle play/pause with improved error handling
   useEffect(() => {
     if (!videoRef.current || !videoSrc || !currentClip || isUnmountedRef.current) {
       return;
@@ -137,23 +165,22 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           
           playPromise
             .then(() => {
-              if (!isUnmountedRef.current) {
+              if (!isUnmountedRef.current && pendingPlayRef.current === playPromise) {
                 console.log('VideoPlayer: Playback started successfully');
                 pendingPlayRef.current = null;
               }
             })
             .catch(err => {
               if (!isUnmountedRef.current && pendingPlayRef.current === playPromise) {
-                console.error('VideoPlayer: Play error:', err);
+                // Only log non-abort errors
                 if (err.name !== 'AbortError') {
+                  console.error('VideoPlayer: Play error:', err);
                   setError('Failed to play video - check file format');
                 }
                 pendingPlayRef.current = null;
               }
             });
         }
-      } else {
-        console.log('VideoPlayer: Video not ready, waiting for canplay event');
       }
     } else {
       cancelPendingPlay();
@@ -170,7 +197,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       console.log('VideoPlayer: Component unmounting');
       isUnmountedRef.current = true;
       cancelPendingPlay();
-      cleanupBlobUrl();
+      
+      // Clear cleanup timeout
+      if (cleanupTimeoutRef.current) {
+        clearTimeout(cleanupTimeoutRef.current);
+        cleanupTimeoutRef.current = null;
+      }
+      
+      // Immediate cleanup on unmount
+      cleanupBlobUrl(true);
     };
   }, [cleanupBlobUrl, cancelPendingPlay]);
 
@@ -204,13 +239,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         
         playPromise
           .then(() => {
-            if (!isUnmountedRef.current) {
+            if (!isUnmountedRef.current && pendingPlayRef.current === playPromise) {
               console.log('VideoPlayer: Auto-play started after canplay');
               pendingPlayRef.current = null;
             }
           })
           .catch(err => {
-            if (!isUnmountedRef.current && err.name !== 'AbortError') {
+            if (!isUnmountedRef.current && pendingPlayRef.current === playPromise && err.name !== 'AbortError') {
               console.error('VideoPlayer: Auto-play error:', err);
               pendingPlayRef.current = null;
             }
