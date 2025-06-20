@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { FolderOpen, FileVideo, Shuffle } from 'lucide-react';
+import { FolderOpen, FileVideo, Shuffle, Clock, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,9 @@ interface VideoSelectionPanelProps {
   onBulkUpload: (files: File[]) => void;
   onGenerateClips: (config: any) => void;
   onRandomizeAll: () => void;
+  onRandomizeTimed: (duration: number) => void;
+  onDirectRandomize: () => void;
+  onCancelProcessing: () => void;
   isGenerating: boolean;
   generationProgress: number;
 }
@@ -25,6 +28,9 @@ const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
   onBulkUpload,
   onGenerateClips,
   onRandomizeAll,
+  onRandomizeTimed,
+  onDirectRandomize,
+  onCancelProcessing,
   isGenerating,
   generationProgress,
 }) => {
@@ -34,6 +40,7 @@ const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
     numClips: 3,
     clipDuration: 5,
   });
+  const [timedRandomizeDuration, setTimedRandomizeDuration] = useState<1 | 2 | 5>(1);
 
   const handleGenerateClips = () => {
     const finalConfig = {
@@ -42,6 +49,10 @@ const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
       randomSelection: true,
     };
     onGenerateClips(finalConfig);
+  };
+
+  const handleTimedRandomize = () => {
+    onRandomizeTimed(timedRandomizeDuration);
   };
 
   return (
@@ -60,9 +71,19 @@ const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
             <BulkDirectorySelector onBulkUpload={onBulkUpload} />
           </div>
           {sourceVideos.length > 0 && (
-            <div className="text-center text-sm text-emerald-400 bg-emerald-400/10 px-3 py-2 rounded">
-              {sourceVideos.length} videos loaded
-            </div>
+            <>
+              <div className="text-center text-sm text-emerald-400 bg-emerald-400/10 px-3 py-2 rounded">
+                {sourceVideos.length} videos loaded (max 199 clips for compilation)
+              </div>
+              <Button
+                onClick={onDirectRandomize}
+                className="w-full bg-purple-600 hover:bg-purple-700"
+                size="sm"
+              >
+                <Shuffle className="w-4 h-4 mr-2" />
+                Direct Randomize from Directory
+              </Button>
+            </>
           )}
         </CardContent>
       </Card>
@@ -158,10 +179,46 @@ const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
                 Randomize
               </Button>
             </div>
+
+            {/* NEW: Timed Randomize Section */}
+            <div className="border-t border-slate-600 pt-3">
+              <Label className="text-slate-300 mb-2 block">Timed Randomize (auto-compile)</Label>
+              <div className="space-y-2">
+                <Select 
+                  value={timedRandomizeDuration.toString()} 
+                  onValueChange={(value) => setTimedRandomizeDuration(Number(value) as 1 | 2 | 5)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 minute compilation</SelectItem>
+                    <SelectItem value="2">2 minute compilation</SelectItem>
+                    <SelectItem value="5">5 minute compilation</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleTimedRandomize}
+                  disabled={isGenerating}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700"
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  Randomize & Compile ({timedRandomizeDuration} min)
+                </Button>
+              </div>
+            </div>
             
             {isGenerating && (
-              <div className="text-center text-sm text-slate-300">
-                Generating... {Math.round(generationProgress)}%
+              <div className="text-center text-sm text-slate-300 space-y-2">
+                <div>Generating... {Math.round(generationProgress)}%</div>
+                <Button
+                  onClick={onCancelProcessing}
+                  variant="destructive"
+                  size="sm"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancel Processing
+                </Button>
               </div>
             )}
           </CardContent>

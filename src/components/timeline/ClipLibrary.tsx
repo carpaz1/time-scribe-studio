@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Film, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -40,12 +39,14 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [isRandomEverything, setIsRandomEverything] = useState(false);
+  const [processingCancelled, setProcessingCancelled] = useState(false);
 
   const { toast } = useToast();
 
   const generateClips = (config: any) => {
     setIsGenerating(true);
     setGenerationProgress(0);
+    setProcessingCancelled(false);
 
     const generatedClips = [];
     const videosToProcess = config.useAllVideos 
@@ -55,33 +56,55 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     const totalClips = config.numClips * videosToProcess.length;
     let clipsGenerated = 0;
 
-    for (let i = 0; i < videosToProcess.length; i++) {
-      const video = videosToProcess[i];
-      if (!video) continue;
-
-      for (let j = 0; j < config.numClips; j++) {
-        const startTime = Math.random() * (video.duration - config.clipDuration);
-
-        const newClip: VideoClip = {
-          id: `clip-${Date.now()}-${Math.random()}`,
-          name: `Clip ${i}-${j}`,
-          sourceFile: video.file,
-          startTime,
-          duration: config.clipDuration,
-          thumbnail: video.thumbnail,
-          position: 0,
-          originalVideoId: video.id,
-        };
-        generatedClips.push(newClip);
-        clipsGenerated++;
-
-        const progress = (clipsGenerated / totalClips) * 100;
-        setGenerationProgress(progress);
+    const processClips = () => {
+      if (processingCancelled) {
+        setIsGenerating(false);
+        return;
       }
-    }
 
-    onClipsGenerated(generatedClips);
+      for (let i = 0; i < videosToProcess.length && !processingCancelled; i++) {
+        const video = videosToProcess[i];
+        if (!video) continue;
+
+        for (let j = 0; j < config.numClips && !processingCancelled; j++) {
+          const startTime = Math.random() * (video.duration - config.clipDuration);
+
+          const newClip: VideoClip = {
+            id: `clip-${Date.now()}-${Math.random()}`,
+            name: `Clip ${i}-${j}`,
+            sourceFile: video.file,
+            startTime,
+            duration: config.clipDuration,
+            thumbnail: video.thumbnail,
+            position: 0,
+            originalVideoId: video.id,
+          };
+          generatedClips.push(newClip);
+          clipsGenerated++;
+
+          const progress = (clipsGenerated / totalClips) * 100;
+          setGenerationProgress(progress);
+        }
+      }
+
+      if (!processingCancelled) {
+        onClipsGenerated(generatedClips);
+      }
+      setIsGenerating(false);
+    };
+
+    // Use setTimeout to allow for cancellation
+    setTimeout(processClips, 100);
+  };
+
+  const handleCancelProcessing = () => {
+    setProcessingCancelled(true);
     setIsGenerating(false);
+    setIsRandomEverything(false);
+    toast({
+      title: "Processing cancelled",
+      description: "Clip generation was cancelled",
+    });
   };
 
   const handleRandomEverything = async () => {
@@ -95,12 +118,15 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     }
 
     setIsRandomEverything(true);
+    setProcessingCancelled(false);
     
     try {
       // Generate 3 random 1-second clips from every video
       const randomClips: VideoClip[] = [];
       
       sourceVideos.forEach((video, videoIndex) => {
+        if (processingCancelled) return;
+        
         for (let clipIndex = 0; clipIndex < 3; clipIndex++) {
           const startTime = Math.random() * Math.max(0, video.duration - 1);
           
@@ -118,43 +144,208 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         }
       });
 
-      onClipsUpdate(randomClips);
+      if (processingCancelled) return;
+
+      // Limit to 199 clips for compilation
+      const limitedClips = randomClips.slice(0, 199);
+      onClipsUpdate(limitedClips);
       
       const config = {
-        totalDuration: randomClips.length,
-        clipOrder: randomClips.map(clip => clip.id),
+        totalDuration: limitedClips.length,
+        clipOrder: limitedClips.map(clip => clip.id),
         zoom: 1,
         playheadPosition: 0,
       };
 
       toast({
         title: "RANDOM EVERYTHING initiated!",
-        description: `Generated ${randomClips.length} random clips and starting compilation...`,
+        description: `Generated ${limitedClips.length} random clips and starting compilation...`,
       });
 
-      await VideoCompilerService.compileTimeline(
-        randomClips,
-        config,
-        undefined,
-        (progress: number, stage: string) => {
-          console.log(`Random compilation progress: ${progress}% - ${stage}`);
+      if (!processingCancelled) {
+        await VideoCompilerService.compileTimeline(
+          limitedClips,
+          config,
+          undefined,
+          (progress: number, stage: string) => {
+            if (!processingCancelled) {
+              console.log(`Random compilation progress: ${progress}% - ${stage}`);
+            }
+          }
+        );
+
+        if (!processingCancelled) {
+          toast({
+            title: "RANDOM EVERYTHING complete!",
+            description: "Your random video compilation is ready for download!",
+          });
         }
-      );
+      }
+
+    } catch (error) {
+      if (!processingCancelled) {
+        console.error('Random everything error:', error);
+        toast({
+          title: "Random everything failed",
+          description: error instanceof Error ? error.message : "Something went wrong",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsRandomEverything(false);
+    }
+  };
+
+  const handleRandomizeTimed = async (targetDurationMinutes: number) => {
+    if (sourceVideos.length === 0) {
+      toast({
+        title: "No videos available",
+        description: "Please upload some videos first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGenerating(true);
+    setProcessingCancelled(false);
+
+    try {
+      const targetDurationSeconds = targetDurationMinutes * 60;
+      const randomClips: VideoClip[] = [];
+      
+      // Calculate how many clips we need and what duration each should be
+      const maxClips = Math.min(199, sourceVideos.length * 10); // Max 10 clips per video
+      const clipDuration = Math.max(0.5, targetDurationSeconds / maxClips); // Minimum 0.5 seconds per clip
+      const actualClipCount = Math.floor(targetDurationSeconds / clipDuration);
+      
+      // Generate clips with calculated duration
+      for (let i = 0; i < actualClipCount && i < sourceVideos.length * 10; i++) {
+        if (processingCancelled) return;
+        
+        const videoIndex = i % sourceVideos.length;
+        const video = sourceVideos[videoIndex];
+        const startTime = Math.random() * Math.max(0, video.duration - clipDuration);
+        
+        const randomClip: VideoClip = {
+          id: `timed-${Date.now()}-${i}`,
+          name: `Timed ${i}`,
+          sourceFile: video.file,
+          startTime,
+          duration: clipDuration,
+          thumbnail: video.thumbnail,
+          position: i,
+          originalVideoId: video.id,
+        };
+        randomClips.push(randomClip);
+      }
+
+      if (processingCancelled) return;
+
+      onClipsUpdate(randomClips);
+      
+      const config = {
+        totalDuration: randomClips.reduce((sum, clip) => sum + clip.duration, 0),
+        clipOrder: randomClips.map(clip => clip.id),
+        zoom: 1,
+        playheadPosition: 0,
+      };
 
       toast({
-        title: "RANDOM EVERYTHING complete!",
-        description: "Your random video compilation is ready for download!",
+        title: `${targetDurationMinutes}-minute compilation started!`,
+        description: `Generated ${randomClips.length} clips totaling ~${targetDurationMinutes} minutes, starting compilation...`,
+      });
+
+      if (!processingCancelled) {
+        await VideoCompilerService.compileTimeline(
+          randomClips,
+          config,
+          undefined,
+          (progress: number, stage: string) => {
+            if (!processingCancelled) {
+              console.log(`Timed compilation progress: ${progress}% - ${stage}`);
+            }
+          }
+        );
+
+        if (!processingCancelled) {
+          toast({
+            title: `${targetDurationMinutes}-minute compilation complete!`,
+            description: "Your timed video compilation is ready for download!",
+          });
+        }
+      }
+
+    } catch (error) {
+      if (!processingCancelled) {
+        console.error('Timed randomize error:', error);
+        toast({
+          title: "Timed compilation failed",
+          description: error instanceof Error ? error.message : "Something went wrong",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDirectRandomize = async () => {
+    if (sourceVideos.length === 0) {
+      toast({
+        title: "No videos available",
+        description: "Please upload some videos first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGenerating(true);
+    setProcessingCancelled(false);
+    
+    try {
+      // Generate 1 random 3-second clip from each video
+      const randomClips: VideoClip[] = [];
+      
+      sourceVideos.forEach((video, videoIndex) => {
+        if (processingCancelled) return;
+        
+        const startTime = Math.random() * Math.max(0, video.duration - 3);
+        
+        const randomClip: VideoClip = {
+          id: `direct-${Date.now()}-${videoIndex}`,
+          name: `Direct ${videoIndex}`,
+          sourceFile: video.file,
+          startTime,
+          duration: 3,
+          thumbnail: video.thumbnail,
+          position: 0,
+          originalVideoId: video.id,
+        };
+        randomClips.push(randomClip);
+      });
+
+      if (processingCancelled) return;
+
+      // Limit to 199 clips
+      const limitedClips = randomClips.slice(0, 199);
+      onClipsUpdate(limitedClips);
+      
+      toast({
+        title: "Direct randomization complete!",
+        description: `Generated ${limitedClips.length} clips directly from your directory`,
       });
 
     } catch (error) {
-      console.error('Random everything error:', error);
-      toast({
-        title: "Random everything failed",
-        description: error instanceof Error ? error.message : "Something went wrong",
-        variant: "destructive",
-      });
+      if (!processingCancelled) {
+        console.error('Direct randomize error:', error);
+        toast({
+          title: "Direct randomization failed",
+          description: error instanceof Error ? error.message : "Something went wrong",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setIsRandomEverything(false);
+      setIsGenerating(false);
     }
   };
 
@@ -225,6 +416,9 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             onBulkUpload={onBulkUpload}
             onGenerateClips={generateClips}
             onRandomizeAll={onRandomizeAll}
+            onRandomizeTimed={handleRandomizeTimed}
+            onDirectRandomize={handleDirectRandomize}
+            onCancelProcessing={handleCancelProcessing}
             isGenerating={isGenerating}
             generationProgress={generationProgress}
           />
