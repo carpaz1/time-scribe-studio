@@ -399,6 +399,49 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     });
   };
 
+  const handleCompile = async () => {
+    if (clips.length === 0) {
+      toast({
+        title: "No clips to compile",
+        description: "Generate clips first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('Starting compilation of', clips.length, 'clips');
+
+      const result = await VideoCompilerService.compileTimeline(
+        clips,
+        { 
+          totalDuration: clips.reduce((sum, clip) => sum + clip.duration, 0), 
+          clipOrder: clips.map(c => c.id), 
+          zoom: 100, 
+          playheadPosition: 0 
+        },
+        undefined,
+        (progress: number, stage: string) => {
+          console.log('Compilation progress:', progress, stage);
+        }
+      );
+
+      console.log('Compilation completed successfully:', result);
+      
+      toast({
+        title: "Compilation Complete!",
+        description: `Video compiled successfully. File ready for download.`,
+      });
+    } catch (error) {
+      console.error('Compilation failed:', error);
+      toast({
+        title: "Compilation Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="w-full h-full bg-gradient-to-b from-slate-800/60 to-slate-900/80 backdrop-blur-sm border-r border-slate-700/50 flex flex-col">
       {/* Header */}
@@ -442,6 +485,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             onCancelProcessing={handleCancelProcessing}
             isGenerating={isGenerating}
             generationProgress={generationProgress}
+            onCompile={handleCompile}
           />
         </div>
 
