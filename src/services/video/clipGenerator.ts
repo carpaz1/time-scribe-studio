@@ -28,8 +28,10 @@ export class ClipGenerator {
     // Generate clips by cycling through videos until we have enough
     let clipsGenerated = 0;
     let videoIndex = 0;
+    let attempts = 0;
+    const maxAttempts = totalClipsNeeded * 2; // Safety limit
 
-    while (clipsGenerated < totalClipsNeeded) {
+    while (clipsGenerated < totalClipsNeeded && attempts < maxAttempts) {
       const file = sourceVideos[videoIndex % sourceVideos.length];
       console.log(`ClipGenerator: Processing file ${videoIndex % sourceVideos.length + 1}/${sourceVideos.length}: ${file.name} (clip ${clipsGenerated + 1}/${totalClipsNeeded})`);
       
@@ -42,8 +44,8 @@ export class ClipGenerator {
         const startTime = Math.random() * maxStartTime;
 
         const clip: VideoClip = {
-          id: `clip_${Date.now()}_${clipsGenerated}_${Math.random()}`,
-          name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${Math.floor(clipsGenerated / sourceVideos.length) + 1}`,
+          id: `clip_${Date.now()}_${clipsGenerated}_${Math.random().toString(36).substr(2, 9)}`,
+          name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${clipsGenerated + 1}`,
           startTime,
           duration: actualClipDuration,
           thumbnail: '',
@@ -65,12 +67,7 @@ export class ClipGenerator {
       }
 
       videoIndex++;
-      
-      // Safety check to prevent infinite loop
-      if (videoIndex > totalClipsNeeded * sourceVideos.length) {
-        console.warn('ClipGenerator: Safety break - too many attempts');
-        break;
-      }
+      attempts++;
     }
 
     const totalGeneratedDuration = clips.length * clipDuration;
@@ -82,25 +79,36 @@ export class ClipGenerator {
   }
 
   private static async getVideoDuration(file: File): Promise<number> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
       
+      const timeout = setTimeout(() => {
+        reject(new Error(`Timeout loading ${file.name}`));
+      }, 10000);
+      
       video.onloadedmetadata = () => {
+        clearTimeout(timeout);
         console.log(`ClipGenerator: Video ${file.name} duration: ${video.duration}`);
         resolve(video.duration || 5);
         URL.revokeObjectURL(video.src);
       };
       
       video.onerror = (error) => {
+        clearTimeout(timeout);
         console.warn(`ClipGenerator: Could not load metadata for ${file.name}:`, error);
-        resolve(5);
+        resolve(5); // Default fallback duration
         if (video.src) {
           URL.revokeObjectURL(video.src);
         }
       };
       
-      video.src = URL.createObjectURL(file);
+      try {
+        video.src = URL.createObjectURL(file);
+      } catch (error) {
+        clearTimeout(timeout);
+        reject(error);
+      }
     });
   }
 }

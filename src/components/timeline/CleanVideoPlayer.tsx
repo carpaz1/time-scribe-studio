@@ -19,15 +19,23 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
   const [currentClip, setCurrentClip] = useState<VideoClip | null>(null);
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Find and load current clip
   useEffect(() => {
+    console.log('CleanVideoPlayer: Looking for clip at time:', currentTime);
+    console.log('CleanVideoPlayer: Available clips:', clips.map(c => ({ id: c.id, position: c.position, duration: c.duration })));
+    
     const activeClip = clips.find(clip => 
       currentTime >= clip.position && currentTime < clip.position + clip.duration
     );
 
+    console.log('CleanVideoPlayer: Found active clip:', activeClip?.name);
+
     if (activeClip && activeClip.id !== currentClip?.id) {
+      console.log('CleanVideoPlayer: Loading new clip:', activeClip.name);
       setCurrentClip(activeClip);
+      setIsLoading(true);
       
       try {
         if (videoSrc) {
@@ -37,11 +45,14 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
         const newSrc = URL.createObjectURL(activeClip.sourceFile);
         setVideoSrc(newSrc);
         setError('');
+        console.log('CleanVideoPlayer: Created video src for:', activeClip.name);
       } catch (err) {
-        console.error('Error loading video:', err);
+        console.error('CleanVideoPlayer: Error loading video:', err);
         setError('Failed to load video file');
+        setIsLoading(false);
       }
     } else if (!activeClip && currentClip) {
+      console.log('CleanVideoPlayer: No active clip, clearing');
       setCurrentClip(null);
       if (videoSrc) {
         URL.revokeObjectURL(videoSrc);
@@ -50,14 +61,13 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
     }
   }, [currentTime, clips, currentClip?.id, videoSrc]);
 
-  // Video time synchronization with better validation
+  // Video time synchronization
   useEffect(() => {
-    if (videoRef.current && currentClip && videoSrc) {
+    if (videoRef.current && currentClip && videoSrc && !isLoading) {
       const video = videoRef.current;
       const timeInClip = currentTime - currentClip.position;
       const targetTime = (currentClip.startTime || 0) + timeInClip;
       
-      // Validate all time values before setting
       if (
         isFinite(targetTime) && 
         isFinite(video.duration) && 
@@ -66,26 +76,27 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
         targetTime <= video.duration
       ) {
         if (Math.abs(video.currentTime - targetTime) > 0.1) {
+          console.log('CleanVideoPlayer: Setting video time to:', targetTime.toFixed(2));
           video.currentTime = targetTime;
         }
       }
     }
-  }, [currentTime, currentClip, videoSrc]);
+  }, [currentTime, currentClip, videoSrc, isLoading]);
 
   // Play/pause handling
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !videoSrc || !currentClip) return;
+    if (!video || !videoSrc || !currentClip || isLoading) return;
 
     if (isPlaying && video.paused && video.readyState >= 2) {
       video.play().catch(console.error);
     } else if (!isPlaying && !video.paused) {
       video.pause();
     }
-  }, [isPlaying, videoSrc, currentClip]);
+  }, [isPlaying, videoSrc, currentClip, isLoading]);
 
   const handleTimeUpdate = useCallback(() => {
-    if (videoRef.current && currentClip && isPlaying) {
+    if (videoRef.current && currentClip && isPlaying && !isLoading) {
       const video = videoRef.current;
       const startTime = currentClip.startTime || 0;
       
@@ -97,7 +108,17 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
         }
       }
     }
-  }, [currentClip, isPlaying, onTimeUpdate]);
+  }, [currentClip, isPlaying, onTimeUpdate, isLoading]);
+
+  const handleLoadedMetadata = useCallback(() => {
+    console.log('CleanVideoPlayer: Video metadata loaded');
+    setIsLoading(false);
+  }, []);
+
+  const handleCanPlay = useCallback(() => {
+    console.log('CleanVideoPlayer: Video can play');
+    setIsLoading(false);
+  }, []);
 
   // Cleanup
   useEffect(() => {
@@ -116,16 +137,28 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
           <p className="text-lg">{error}</p>
         </div>
       ) : videoSrc ? (
-        <video
-          ref={videoRef}
-          src={videoSrc}
-          className="max-w-full max-h-full object-contain"
-          onTimeUpdate={handleTimeUpdate}
-          onError={() => setError('Video playback error')}
-          muted
-          playsInline
-          preload="metadata"
-        />
+        <>
+          {isLoading && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+              <div className="text-white">Loading video...</div>
+            </div>
+          )}
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            className="max-w-full max-h-full object-contain"
+            onTimeUpdate={handleTimeUpdate}
+            onLoadedMetadata={handleLoadedMetadata}
+            onCanPlay={handleCanPlay}
+            onError={() => {
+              setError('Video playback error');
+              setIsLoading(false);
+            }}
+            muted
+            playsInline
+            preload="metadata"
+          />
+        </>
       ) : (
         <div className="text-gray-400 text-center">
           <div className="text-6xl mb-4">🎬</div>

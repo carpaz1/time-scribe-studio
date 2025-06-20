@@ -126,7 +126,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       );
 
       console.log('TimelineEditor: Generated clips:', clips);
-      updateState({ clips, timelineClips: clips });
+      
+      // Immediately add clips to timeline and update state
+      updateState({ 
+        clips, 
+        timelineClips: clips,
+        totalDuration: Math.max(duration, clips.length > 0 ? Math.max(...clips.map(c => c.position + c.duration)) : 60)
+      });
+      
+      console.log('TimelineEditor: Updated timeline with', clips.length, 'clips');
 
     } catch (error) {
       console.error('TimelineEditor: Clip generation error:', error);
