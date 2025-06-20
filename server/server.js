@@ -643,13 +643,14 @@ async function processVideoCompilation(jobId, files, clipsData) {
   }
 }
 
-// Enhanced video validation function
+// Enhanced video validation function - less aggressive
 async function validateVideoFile(filePath) {
   return new Promise((resolve) => {
     const probe = ffmpeg.ffprobe(filePath, (err, metadata) => {
       if (err) {
         console.warn(`[VALIDATE] FFprobe error for ${filePath}:`, err.message);
-        resolve(false);
+        // Don't immediately reject, try to process anyway
+        resolve(true);
         return;
       }
 
@@ -662,23 +663,23 @@ async function validateVideoFile(filePath) {
         }
 
         const duration = parseFloat(metadata.format.duration);
-        if (!duration || duration < 0.1 || isNaN(duration)) {
+        if (!duration || duration < 0.05 || isNaN(duration)) {
           console.warn(`[VALIDATE] Invalid duration for ${filePath}:`, duration);
           resolve(false);
           return;
         }
 
-        // Check for valid codec
+        // More permissive codec check
         const codec = videoStream.codec_name;
-        const supportedCodecs = ['h264', 'h265', 'hevc', 'vp8', 'vp9', 'av1'];
-        if (!supportedCodecs.includes(codec)) {
-          console.warn(`[VALIDATE] Unsupported codec for ${filePath}:`, codec);
+        const problematicCodecs = ['wmv1', 'wmv2', 'wmv3', 'vc1']; // Only block truly problematic ones
+        if (problematicCodecs.includes(codec)) {
+          console.warn(`[VALIDATE] Problematic codec for ${filePath}:`, codec);
           resolve(false);
           return;
         }
 
-        // Check dimensions
-        if (!videoStream.width || !videoStream.height || videoStream.width < 64 || videoStream.height < 64) {
+        // More permissive dimension check
+        if (!videoStream.width || !videoStream.height || videoStream.width < 32 || videoStream.height < 32) {
           console.warn(`[VALIDATE] Invalid dimensions for ${filePath}:`, videoStream.width, 'x', videoStream.height);
           resolve(false);
           return;
@@ -688,15 +689,17 @@ async function validateVideoFile(filePath) {
         resolve(true);
       } catch (parseError) {
         console.warn(`[VALIDATE] Metadata parsing error for ${filePath}:`, parseError);
-        resolve(false);
+        // Try to process anyway
+        resolve(true);
       }
     });
 
-    // Add timeout
+    // Longer timeout for validation
     setTimeout(() => {
       probe.kill();
-      resolve(false);
-    }, 5000); // Reduced timeout
+      console.warn(`[VALIDATE] Validation timeout for ${filePath}, assuming valid`);
+      resolve(true);
+    }, 8000);
   });
 }
 
@@ -712,7 +715,7 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
       return;
     }
     
-    compilationProgress.set(jobId, { percent: 20, stage: 'Encoding clip...' });
+    compilationProgress.set(jobId, { percent: 20, stage: 'Encoding clip for smooth playback...' });
     
     const file = files[clip.fileIndex];
     
@@ -722,31 +725,33 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
       return;
     }
     
-    // Add timeout to prevent hanging
+    // Longer timeout for better processing
     const timeout = setTimeout(() => {
       console.warn(`[SINGLE] Processing timeout for job ${jobId}`);
       reject(new Error('Processing timeout - operation took too long'));
-    }, 300000); // 5 minutes timeout
+    }, 600000); // 10 minutes timeout
     
     const ffmpegProcess = ffmpeg(file.path)
       .seekInput(Math.max(0, clip.startTime))
       .duration(Math.max(0.1, clip.duration))
       .videoCodec('libx264')
       .audioCodec('aac')
-      .audioBitrate('96k')
+      .audioBitrate('128k') // Increased audio quality
       .size(`${videoSettings.width}x${videoSettings.height}`)
-      .fps(videoSettings.fps)
+      .fps(30) // Back to 30fps for smoother playback
       .aspect('16:9')
       .outputOptions([
-        '-preset', 'superfast',
-        '-crf', '30',
+        '-preset', 'medium', // Better quality than superfast
+        '-crf', '23', // Better quality (lower CRF)
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
         '-avoid_negative_ts', 'make_zero',
         '-fflags', '+genpts',
-        '-threads', '2',
+        '-threads', '0', // Use all available threads
         '-strict', '-2',
-        '-loglevel', 'error' // Reduce verbose output
+        '-loglevel', 'warning', // More verbose logging
+        '-vsync', 'cfr', // Constant frame rate
+        '-r', '30' // Explicit frame rate
       ])
       .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
       .output(outputPath);
@@ -756,8 +761,8 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
 
     ffmpegProcess
       .on('start', (commandLine) => {
-        console.log(`[SINGLE] FFmpeg started for job ${jobId}`);
-        compilationProgress.set(jobId, { percent: 25, stage: 'Fast encoding in progress...' });
+        console.log(`[SINGLE] FFmpeg started for job ${jobId}:`, commandLine);
+        compilationProgress.set(jobId, { percent: 25, stage: 'High-quality encoding in progress...' });
       })
       .on('progress', (progress) => {
         // Check for cancellation during progress
@@ -770,7 +775,7 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
         const percent = Math.min(95, 25 + (progress.percent || 0) * 0.7);
         compilationProgress.set(jobId, { 
           percent: percent, 
-          stage: `Fast encoding: ${Math.round(progress.percent || 0)}%` 
+          stage: `Encoding: ${Math.round(progress.percent || 0)}% (${progress.timemark || ''})` 
         });
       })
       .on('end', () => {
@@ -784,13 +789,15 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
         activeJobs.delete(jobId);
         console.error(`[SINGLE] FFmpeg error for job ${jobId}:`, err);
         
-        // More specific error handling
+        // Try to provide more helpful error messages
         if (err.message.includes('Invalid data found')) {
-          reject(new Error(`Invalid or corrupted video file: ${file.originalname}`));
+          reject(new Error(`Video file appears corrupted: ${file.originalname}. Try with a different file.`));
         } else if (err.message.includes('No such file')) {
           reject(new Error(`Source file not found: ${file.originalname}`));
+        } else if (err.message.includes('Permission denied')) {
+          reject(new Error(`Permission denied accessing file: ${file.originalname}`));
         } else {
-          reject(new Error(`Video encoding failed for ${file.originalname}: ${err.message}`));
+          reject(new Error(`Video encoding failed for ${file.originalname}. File may be in an unsupported format.`));
         }
       })
       .run();

@@ -20,6 +20,7 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const blobUrlRef = useRef<string>('');
+  const generationAttemptedRef = useRef(false);
 
   // Cleanup function
   const cleanup = () => {
@@ -34,12 +35,13 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
     }
   };
 
-  // Generate thumbnail from video with better error handling
+  // Generate thumbnail with simplified approach
   useEffect(() => {
-    if (isGenerating || thumbnailUrl || hasError) return;
+    if (generationAttemptedRef.current || isGenerating || thumbnailUrl || hasError) return;
 
     const generateThumbnail = async () => {
-      console.log('LibraryClipThumbnail: Starting thumbnail generation for', clip.name);
+      generationAttemptedRef.current = true;
+      console.log('LibraryClipThumbnail: Starting simplified thumbnail generation for', clip.name);
       setIsGenerating(true);
       setHasError(false);
 
@@ -66,34 +68,28 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
         const blobUrl = URL.createObjectURL(clip.sourceFile);
         blobUrlRef.current = blobUrl;
         
-        // Set up video loading with shorter timeout
+        // Set up video loading with longer timeout and simpler approach
         const loadPromise = new Promise<void>((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new Error('Video load timeout'));
-          }, 3000); // Reduced to 3 seconds
+          }, 8000); // Increased timeout
 
           video.addEventListener('loadedmetadata', () => {
             clearTimeout(timeout);
             console.log('LibraryClipThumbnail: Video loaded for', clip.name);
             
-            // Validate video has proper dimensions
-            if (video.videoWidth === 0 || video.videoHeight === 0) {
-              reject(new Error('Invalid video dimensions'));
-              return;
-            }
-            
             // Set canvas dimensions
             canvas.width = 120;
             canvas.height = 68;
             
-            // Seek to a safe position
-            const seekTime = Math.min(clip.startTime + 1, video.duration - 0.5, 1);
-            video.currentTime = Math.max(0, seekTime);
+            // Try to seek to middle of clip, but don't fail if seeking doesn't work
+            const seekTime = Math.max(0, clip.startTime + (clip.duration / 2));
             
-            video.addEventListener('seeked', () => {
+            // Draw current frame (might be first frame if seeking fails)
+            const drawFrame = () => {
               try {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
                 setThumbnailUrl(dataUrl);
                 console.log('LibraryClipThumbnail: Thumbnail generated for', clip.name);
                 resolve();
@@ -101,11 +97,16 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
                 console.error('LibraryClipThumbnail: Error drawing thumbnail for', clip.name, drawError);
                 reject(drawError);
               }
-            }, { once: true });
+            };
 
-            video.addEventListener('error', () => {
-              reject(new Error('Video seek failed'));
-            }, { once: true });
+            // Try to seek, but proceed even if it fails
+            video.currentTime = seekTime;
+            
+            // Wait a bit for seek to complete, then draw
+            setTimeout(drawFrame, 100);
+            
+            // Also set up seeked listener as backup
+            video.addEventListener('seeked', drawFrame, { once: true });
           }, { once: true });
 
           video.addEventListener('error', (e) => {
@@ -122,21 +123,19 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
         console.error('LibraryClipThumbnail: Thumbnail generation failed for', clip.name, error);
         setHasError(true);
         
-        // Generate fallback thumbnail
+        // Generate simple fallback thumbnail
         const canvas = canvasRef.current;
         if (canvas) {
           const ctx = canvas.getContext('2d');
           if (ctx) {
             canvas.width = 120;
             canvas.height = 68;
-            ctx.fillStyle = '#DC2626'; // Red background for error
+            ctx.fillStyle = '#374151'; // Gray background
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 10px Arial';
+            ctx.font = 'bold 12px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('ERROR', canvas.width / 2, canvas.height / 2 - 5);
-            ctx.font = '8px Arial';
-            ctx.fillText('Unsupported', canvas.width / 2, canvas.height / 2 + 8);
+            ctx.fillText('📽️', canvas.width / 2, canvas.height / 2 + 5);
             setThumbnailUrl(canvas.toDataURL());
           }
         }
@@ -146,14 +145,15 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
       }
     };
 
-    // Delay thumbnail generation to avoid overwhelming the browser
-    const timeoutId = setTimeout(generateThumbnail, Math.random() * 500);
+    // Stagger thumbnail generation to avoid overwhelming the browser
+    const delay = Math.random() * 1000;
+    const timeoutId = setTimeout(generateThumbnail, delay);
     
     return () => {
       clearTimeout(timeoutId);
       cleanup();
     };
-  }, [clip, thumbnailUrl, isGenerating, hasError]);
+  }, [clip]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -164,7 +164,7 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
     <div
       className={`bg-gray-700 border border-gray-500 rounded cursor-pointer transition-all duration-200 group overflow-hidden aspect-video ${
         isHovered ? 'shadow-lg shadow-blue-500/30 border-blue-400' : ''
-      } ${hasError ? 'border-red-500' : ''}`}
+      } ${hasError ? 'border-yellow-500' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onAdd}
@@ -175,7 +175,7 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
         {/* Thumbnail or Fallback */}
         {isGenerating ? (
           <div className="w-full h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
-            <div className="text-white text-xs">Loading...</div>
+            <div className="text-white text-xs animate-pulse">Loading...</div>
           </div>
         ) : thumbnailUrl ? (
           <img 
@@ -188,12 +188,12 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
             }}
           />
         ) : hasError ? (
-          <div className="w-full h-full bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center">
-            <AlertCircle className="w-6 h-6 text-white" />
+          <div className="w-full h-full bg-gradient-to-r from-gray-600 to-gray-700 flex items-center justify-center">
+            <div className="text-white text-2xl">📽️</div>
           </div>
         ) : (
           <div className="w-full h-full bg-gradient-to-r from-gray-600 to-gray-700 flex items-center justify-center">
-            <div className="text-white text-xs">📽️</div>
+            <div className="text-white text-2xl">📽️</div>
           </div>
         )}
 
@@ -214,8 +214,8 @@ const LibraryClipThumbnail: React.FC<LibraryClipThumbnailProps> = ({
               Add
             </Button>
           ) : (
-            <div className="text-xs text-red-200 text-center px-2">
-              Unsupported file
+            <div className="text-xs text-yellow-200 text-center px-2">
+              Preview unavailable
             </div>
           )}
         </div>
