@@ -52,6 +52,44 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     });
   };
 
+  const createThumbnail = async (file: File, startTime: number = 0): Promise<string> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      video.onloadedmetadata = () => {
+        canvas.width = 160;
+        canvas.height = 90;
+        video.currentTime = Math.min(startTime + 1, video.duration / 2);
+      };
+
+      video.onseeked = () => {
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL());
+        }
+      };
+
+      video.onerror = () => {
+        // Fallback thumbnail
+        if (ctx) {
+          canvas.width = 160;
+          canvas.height = 90;
+          ctx.fillStyle = '#374151';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#9CA3AF';
+          ctx.font = '12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('📽️', canvas.width / 2, canvas.height / 2);
+          resolve(canvas.toDataURL());
+        }
+      };
+
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
   const generateClips = async () => {
     if (sourceVideos.length === 0) {
       toast({
@@ -95,6 +133,9 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             const clipDuration = Math.min(5, duration - startTime);
             
             if (clipDuration > 0.5) {
+              // Generate thumbnail for this clip
+              const thumbnail = await createThumbnail(video, startTime);
+              
               const clip: VideoClip = {
                 id: `${Date.now()}-${i}-${j}`,
                 name: `${video.name.replace(/\.[^/.]+$/, "")} - Clip ${j + 1}`,
@@ -102,6 +143,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
                 startTime,
                 duration: clipDuration,
                 position: 0,
+                thumbnail,
               };
               newClips.push(clip);
             }
@@ -207,7 +249,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
                   value={generationProgress} 
                   className="h-2 bg-slate-700/50"
                 />
-                <p className="text-xs text-slate-400 text-center">
+                <p className="text-xs text-slate-200 text-center">
                   Generating clips... {Math.round(generationProgress)}%
                 </p>
               </div>
@@ -254,7 +296,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
                 <LibraryClipThumbnail
                   key={clip.id}
                   clip={clip}
-                  onAddToTimeline={() => onClipAdd(clip)}
+                  onAdd={() => onClipAdd(clip)}
                 />
               ))}
             </div>
