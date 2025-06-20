@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { Play, Pause, Square, ZoomIn, ZoomOut, RotateCcw, Trash2 } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
 interface PlaybackControlsProps {
   isPlaying: boolean;
@@ -28,85 +29,42 @@ const PlaybackControls: React.FC<PlaybackControlsProps> = ({
   onReset,
   onClearTimeline,
 }) => {
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   return (
-    <div className="bg-slate-800/60 border-y border-slate-700/50 p-4">
-      <div className="flex items-center justify-between">
-        {/* Playback Controls */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onTogglePlayback}
-            className="bg-slate-700 hover:bg-slate-600 text-white"
-          >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (isPlaying) onTogglePlayback();
-            }}
-            className="hover:bg-slate-700 text-slate-300"
-          >
-            <Square className="w-4 h-4" />
-          </Button>
-        </div>
+    <div className="h-16 bg-gradient-to-r from-slate-800/60 to-slate-900/60 backdrop-blur-sm border-y border-slate-700/50 px-6 flex items-center justify-between shrink-0">
+      {/* Playback Controls */}
+      <div className="flex items-center space-x-3">
+        <Button
+          onClick={onTogglePlayback}
+          disabled={timelineClipsLength === 0}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          size="sm"
+        >
+          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+        </Button>
+      </div>
 
-        {/* Time Display */}
-        <div className="text-slate-300 text-sm">
-          {formatTime(playheadPosition)} / {formatTime(totalDuration)}
-        </div>
+      {/* Timeline Info */}
+      <div className="flex items-center space-x-6 text-sm text-slate-300">
+        <span>Clips: {timelineClipsLength}</span>
+        <span>Duration: {totalDuration.toFixed(1)}s</span>
+        <span>Position: {playheadPosition.toFixed(1)}s</span>
+        <span>Zoom: {(zoom * 100).toFixed(0)}%</span>
+      </div>
 
-        {/* Zoom Controls */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onZoomOut}
-            className="hover:bg-slate-700 text-slate-300"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </Button>
-          <span className="text-slate-400 text-sm min-w-[60px] text-center">
-            {Math.round(zoom * 100)}%
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onZoomIn}
-            className="hover:bg-slate-700 text-slate-300"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </Button>
-        </div>
-
-        {/* Timeline Management */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClearTimeline}
-            disabled={timelineClipsLength === 0}
-            className="hover:bg-slate-700 text-slate-300"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onReset}
-            className="hover:bg-slate-700 text-slate-300"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </Button>
-        </div>
+      {/* Zoom & Actions */}
+      <div className="flex items-center space-x-2">
+        <Button onClick={onZoomOut} variant="outline" size="sm" className="border-slate-600 text-slate-300">
+          <ZoomOut className="w-4 h-4" />
+        </Button>
+        <Button onClick={onZoomIn} variant="outline" size="sm" className="border-slate-600 text-slate-300">
+          <ZoomIn className="w-4 h-4" />
+        </Button>
+        <Button onClick={onClearTimeline} variant="outline" size="sm" className="border-slate-600 text-slate-300">
+          <Trash2 className="w-4 h-4" />
+        </Button>
+        <Button onClick={onReset} variant="outline" size="sm" className="border-slate-600 text-slate-300">
+          <RotateCcw className="w-4 h-4" />
+        </Button>
       </div>
     </div>
   );

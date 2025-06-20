@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { VideoClip, SourceVideo, CompileRequest } from '@/types/timeline';
@@ -113,18 +112,56 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   };
 
   const handleVideoUpload = async (files: File[]) => {
+    // Filter for actual video files only
+    const videoFiles = files.filter(file => {
+      const isVideo = file.type.startsWith('video/') || 
+                     file.name.toLowerCase().match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/);
+      
+      if (!isVideo) {
+        console.log(`Skipping non-video file: ${file.name} (type: ${file.type})`);
+      }
+      
+      return isVideo;
+    });
+
+    if (videoFiles.length === 0) {
+      toast({
+        title: "No video files found",
+        description: "Please select video files (mp4, avi, mov, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (videoFiles.length !== files.length) {
+      toast({
+        title: "Some files skipped",
+        description: `Only processing ${videoFiles.length} video files out of ${files.length} total files`,
+      });
+    }
+
     // Convert File[] to SourceVideo[]
     const newSourceVideos: SourceVideo[] = [];
     
-    for (const file of files) {
+    for (const file of videoFiles) {
       // Create video element to get duration and thumbnail
       const videoElement = document.createElement('video');
       videoElement.preload = 'metadata';
       
       try {
         await new Promise((resolve, reject) => {
-          videoElement.onloadedmetadata = () => resolve(null);
-          videoElement.onerror = () => reject(new Error(`Failed to load video: ${file.name}`));
+          const timeout = setTimeout(() => {
+            reject(new Error(`Timeout loading video: ${file.name}`));
+          }, 10000); // 10 second timeout
+          
+          videoElement.onloadedmetadata = () => {
+            clearTimeout(timeout);
+            resolve(null);
+          };
+          videoElement.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error(`Failed to load video: ${file.name}`));
+          };
           videoElement.src = URL.createObjectURL(file);
         });
         
@@ -160,23 +197,22 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         newSourceVideos.push(sourceVideo);
       } catch (error) {
         console.error('Error processing video:', error);
-        // Create fallback SourceVideo with default values
-        const sourceVideo: SourceVideo = {
-          id: `source-${Date.now()}-${Math.random()}`,
-          name: file.name.replace(/\.[^/.]+$/, ''),
-          file,
-          duration: 0,
-          thumbnail: '',
-        };
-        newSourceVideos.push(sourceVideo);
+        // Skip failed videos instead of creating fallback entries
+        toast({
+          title: "Video processing failed",
+          description: `Could not process ${file.name}`,
+          variant: "destructive",
+        });
       }
     }
     
-    setSourceVideos(prev => [...prev, ...newSourceVideos]);
-    toast({
-      title: "Videos uploaded",
-      description: `${files.length} video(s) added to library`,
-    });
+    if (newSourceVideos.length > 0) {
+      setSourceVideos(prev => [...prev, ...newSourceVideos]);
+      toast({
+        title: "Videos uploaded",
+        description: `${newSourceVideos.length} video(s) added to library`,
+      });
+    }
   };
 
   const handleBulkUpload = (files: File[]) => {
