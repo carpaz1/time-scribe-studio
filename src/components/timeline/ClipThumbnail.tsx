@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, FileVideo } from 'lucide-react';
 import { VideoClip } from '@/types/timeline';
 import { Button } from '@/components/ui/button';
 
@@ -25,7 +25,10 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+  const [thumbnailError, setThumbnailError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -35,39 +38,116 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
     top: '10px',
   };
 
-  // Generate thumbnail from video
+  // Generate thumbnail from video with better error handling
   useEffect(() => {
-    const generateThumbnail = () => {
-      const video = document.createElement('video');
-      video.src = URL.createObjectURL(clip.sourceFile);
-      video.muted = true;
-      video.playsInline = true;
-      
-      video.addEventListener('loadeddata', () => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+    let mounted = true;
+    setIsLoading(true);
+    setThumbnailError(false);
+
+    const generateThumbnail = async () => {
+      try {
+        const video = document.createElement('video');
+        videoRef.current = video;
         
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        video.muted = true;
+        video.playsInline = true;
+        video.crossOrigin = 'anonymous';
         
-        // Set canvas dimensions
-        canvas.width = 120;
-        canvas.height = 68;
-        
-        // Seek to middle of clip for thumbnail
-        video.currentTime = clip.startTime + (clip.duration / 2);
-        
-        video.addEventListener('seeked', () => {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL();
-          setThumbnailUrl(dataUrl);
-          URL.revokeObjectURL(video.src);
-        }, { once: true });
-      });
+        // Create object URL
+        const objectUrl = URL.createObjectURL(clip.sourceFile);
+        video.src = objectUrl;
+
+        const cleanup = () => {
+          URL.revokeObjectURL(objectUrl);
+          video.remove();
+          videoRef.current = null;
+        };
+
+        video.addEventListener('error', () => {
+          console.warn('Thumbnail generation failed for:', clip.name);
+          if (mounted) {
+            setThumbnailError(true);
+            setIsLoading(false);
+          }
+          cleanup();
+        });
+
+        video.addEventListener('loadeddata', () => {
+          if (!mounted) {
+            cleanup();
+            return;
+          }
+
+          const canvas = canvasRef.current;
+          if (!canvas) {
+            cleanup();
+            return;
+          }
+          
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            cleanup();
+            return;
+          }
+          
+          // Set canvas dimensions
+          canvas.width = 120;
+          canvas.height = 68;
+          
+          // Seek to middle of clip for thumbnail
+          const seekTime = Math.min(clip.startTime + (clip.duration / 2), video.duration - 0.1);
+          video.currentTime = Math.max(0, seekTime);
+          
+          video.addEventListener('seeked', () => {
+            if (!mounted) {
+              cleanup();
+              return;
+            }
+
+            try {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+              setThumbnailUrl(dataUrl);
+              setIsLoading(false);
+            } catch (err) {
+              console.warn('Canvas drawing failed for:', clip.name, err);
+              setThumbnailError(true);
+              setIsLoading(false);
+            }
+            cleanup();
+          }, { once: true });
+
+          // Fallback timeout
+          setTimeout(() => {
+            if (mounted && isLoading) {
+              console.warn('Thumbnail generation timeout for:', clip.name);
+              setThumbnailError(true);
+              setIsLoading(false);
+              cleanup();
+            }
+          }, 3000);
+        });
+
+        // Start loading
+        video.load();
+      } catch (err) {
+        console.warn('Thumbnail setup failed for:', clip.name, err);
+        if (mounted) {
+          setThumbnailError(true);
+          setIsLoading(false);
+        }
+      }
     };
 
     generateThumbnail();
-  }, [clip]);
+
+    return () => {
+      mounted = false;
+      if (videoRef.current) {
+        videoRef.current.remove();
+      }
+    };
+  }, [clip.sourceFile, clip.name, clip.startTime, clip.duration]);
 
   return (
     <div
@@ -83,17 +163,25 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       
       <div className="relative h-full">
-        {/* Thumbnail */}
-        {thumbnailUrl ? (
+        {/* Thumbnail or Fallback */}
+        {isLoading ? (
+          <div className="w-full h-full bg-gradient-to-r from-slate-600 to-slate-700 flex items-center justify-center">
+            <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+          </div>
+        ) : thumbnailError || !thumbnailUrl ? (
+          <div className="w-full h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
+            <FileVideo className="w-6 h-6 text-white" />
+          </div>
+        ) : (
           <img 
             src={thumbnailUrl} 
             alt={clip.name}
             className="w-full h-full object-cover"
+            onError={() => {
+              console.warn('Thumbnail display error for:', clip.name);
+              setThumbnailError(true);
+            }}
           />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
-            <div className="text-white text-xs">Loading...</div>
-          </div>
         )}
 
         {/* Overlay with clip info */}

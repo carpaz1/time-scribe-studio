@@ -1,96 +1,52 @@
 
 import React from 'react';
-import { Settings } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Info, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ConfigurationStepProps {
+  config: any;
   sourceVideosCount: number;
-  config: {
-    videoSelectionMode: 'all' | 'specific';
-    numVideos: number;
-    numClips: number;
-    clipDuration: number;
-  };
   onConfigChange: (config: any) => void;
 }
 
 const ConfigurationStep: React.FC<ConfigurationStepProps> = ({
-  sourceVideosCount,
   config,
+  sourceVideosCount,
   onConfigChange,
 }) => {
-  const updateConfig = (updates: Partial<typeof config>) => {
-    onConfigChange({ ...config, ...updates });
-  };
-
   return (
-    <Card className="bg-slate-800/50 border-slate-700">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg text-slate-200 flex items-center gap-2">
-          <Settings className="w-5 h-5" />
-          Configure Clips
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <Label className="text-slate-300">How many videos to process?</Label>
-          <Select 
-            value={config.videoSelectionMode} 
-            onValueChange={(value: 'all' | 'specific') => 
-              updateConfig({ videoSelectionMode: value })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All videos ({sourceVideosCount})</SelectItem>
-              <SelectItem value="specific">Specific number</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {config.videoSelectionMode === 'specific' && (
-          <div>
-            <Label className="text-slate-300">Number of videos to process</Label>
-            <Input
-              type="number"
-              min="1"
-              max={sourceVideosCount}
-              value={config.numVideos}
-              onChange={(e) => updateConfig({ 
-                numVideos: Math.min(Number(e.target.value), sourceVideosCount) 
-              })}
-            />
+    <div className="p-4 space-y-3">
+      <Card className="bg-blue-500/10 border-blue-500/30">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-blue-300 flex items-center gap-2">
+            <Info className="w-4 h-4" />
+            Configuration Info
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs text-blue-200 space-y-2">
+          <p>
+            The Configure tab allows you to set up generation parameters for your clips.
+          </p>
+          <div className="bg-blue-500/10 rounded p-2 space-y-1">
+            <div className="font-medium">Current Settings:</div>
+            <div>• Videos available: {sourceVideosCount}</div>
+            <div>• Clips per video: {config.numClips}</div>
+            <div>• Clip duration: {config.clipDuration}s</div>
+            <div>• Selection: {config.videoSelectionMode === 'all' ? 'All videos' : `${config.numVideos} videos`}</div>
           </div>
-        )}
+          <p className="text-xs text-blue-300">
+            💡 Use the Generate & Randomize section to apply these settings and create clips.
+          </p>
+        </CardContent>
+      </Card>
 
-        <div>
-          <Label className="text-slate-300">Clips per video</Label>
-          <Input
-            type="number"
-            min="1"
-            max="10"
-            value={config.numClips}
-            onChange={(e) => updateConfig({ numClips: Number(e.target.value) })}
-          />
+      <div className="text-center">
+        <div className="inline-flex items-center gap-2 text-xs text-slate-400 bg-slate-700/30 rounded px-3 py-2">
+          <Settings2 className="w-4 h-4" />
+          Advanced configuration coming soon
         </div>
-
-        <div>
-          <Label className="text-slate-300">Clip length (seconds)</Label>
-          <Input
-            type="number"
-            min="1"
-            max="60"
-            value={config.clipDuration}
-            onChange={(e) => updateConfig({ clipDuration: Number(e.target.value) })}
-          />
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 

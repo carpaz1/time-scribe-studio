@@ -1,239 +1,302 @@
-import React, { useRef, useState } from 'react';
-import { VideoClip, SourceVideo, CompileRequest } from '@/types/timeline';
-import { useTimelineState } from '@/hooks/useTimelineState';
-import { usePlaybackControl } from '@/hooks/usePlaybackControl';
-import { VideoCompilerService } from '@/services/videoCompiler';
-import { useToast } from '@/hooks/use-toast';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import { ZipDownloaderService } from '@/services/zipDownloader';
-import TimelineMain from './TimelineMain';
-import VideoPlayerSection from './VideoPlayerSection';
-import SidebarSection from './SidebarSection';
-import EditorHeader from './EditorHeader';
-import SettingsPanel from './SettingsPanel';
+import React, { useState, useCallback, useRef } from 'react';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+import { toast } from "@/hooks/use-toast";
 import { useProgressTracker } from '@/hooks/useProgressTracker';
+import { VideoClip, CompileRequest } from '@/types/timeline';
+import { VideoCompilerService } from '@/services/videoCompiler';
+import VideoUploadStep from './VideoUploadStep';
+import ConfigurationStep from './ConfigurationStep';
+import RandomizeStep from './RandomizeStep';
+import ClipLibrary from './ClipLibrary';
+import VideoPlayerSection from './VideoPlayerSection';
+import TimelineMain from './TimelineMain';
+import TimelineControls from './TimelineControls';
 import StatusBar from './StatusBar';
+import SettingsPanel from './SettingsPanel';
+import EditorHeader from './EditorHeader';
 
 interface TimelineEditorProps {
-  initialClips?: VideoClip[];
   onExport?: (data: CompileRequest) => void;
 }
 
-const TimelineEditor: React.FC<TimelineEditorProps> = ({ 
-  initialClips = [], 
-  onExport 
-}) => {
-  const { toast } = useToast();
-  const [lastCompilationResult, setLastCompilationResult] = useState<{ downloadUrl?: string; outputFile?: string }>();
-  const [compilationProgress, setCompilationProgress] = useState(0);
-  const [compilationStage, setCompilationStage] = useState('');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const progressTracker = useProgressTracker();
+const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
+  const [sourceVideos, setSourceVideos] = useState<File[]>([]);
+  const [clips, setClips] = useState<VideoClip[]>([]);
+  const [timelineClips, setTimelineClips] = useState<VideoClip[]>([]);
+  const [totalDuration, setTotalDuration] = useState(60);
+  const [zoom, setZoom] = useState(100);
+  const [playheadPosition, setPlayheadPosition] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [activeStep, setActiveStep] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggedClip, setDraggedClip] = useState<VideoClip | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [lastCompilationResult, setLastCompilationResult] = useState<{ downloadUrl?: string; outputFile?: string } | undefined>(undefined);
+  const [showVideoPreview, setShowVideoPreview] = useState(false);
 
-  // State management
-  const timelineState = useTimelineState(initialClips);
-  const {
-    clips,
-    sourceVideos,
-    timelineClips,
-    isPlaying,
-    playheadPosition,
-    zoom,
-    totalDuration,
-    draggedClip,
-    isCompiling,
-    timelineScrollOffset,
-    setClips,
-    setSourceVideos,
-    setIsPlaying,
-    setPlayheadPosition,
-    setZoom,
-    setDraggedClip,
-    setIsCompiling,
-    setTimelineScrollOffset,
-    handleClipAdd,
-    handleClipRemove,
-    handleClipReorder,
-    handleReset,
-    handleClearTimeline,
-    handleRandomizeAll,
-  } = timelineState;
+  const { progress, startProgress, updateProgress, completeProgress, resetProgress } = useProgressTracker();
 
-  // Playback control
-  const { togglePlayback } = usePlaybackControl({
-    isPlaying,
-    setIsPlaying,
-    playheadPosition,
-    setPlayheadPosition,
-    totalDuration,
-  });
+  const nextClipId = useRef(1);
 
-  // Enhanced zoom controls
-  const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 10));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.1));
+  const handleFilesSelected = (files: File[]) => {
+    setSourceVideos(prevFiles => [...prevFiles, ...files]);
+  };
 
-  // Video upload handler
-  const handleVideoUpload = async (files: File[]) => {
-    const videoFiles = files.filter(file => {
-      const isVideo = file.type.startsWith('video/') || 
-                     file.name.toLowerCase().match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/);
-      return isVideo;
-    });
+  const handleRemoveFile = (name: string) => {
+    setSourceVideos(prevFiles => prevFiles.filter(file => file.name !== name));
+  };
 
-    if (videoFiles.length === 0) {
+  const handleClearAll = () => {
+    setSourceVideos([]);
+    setClips([]);
+    setTimelineClips([]);
+    resetProgress();
+  };
+
+  const togglePlayback = useCallback(() => {
+    setIsPlaying(isPlaying => !isPlaying);
+  }, []);
+
+  const handleZoomIn = () => {
+    setZoom(zoom => Math.min(zoom + 10, 200));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(zoom => Math.max(zoom - 10, 10));
+  };
+
+  const handleReset = () => {
+    setZoom(100);
+    setPlayheadPosition(0);
+  };
+
+  const handleClearTimeline = () => {
+    setTimelineClips([]);
+    setPlayheadPosition(0);
+  };
+
+  const handleExportJSON = () => {
+    VideoCompilerService.exportTimelineJSON(timelineClips, totalDuration, zoom, playheadPosition);
+  };
+
+  const handleAddToTimeline = (clip: VideoClip) => {
+    const newClip = { ...clip, position: 0 };
+    setTimelineClips(prevClips => [...prevClips, newClip]);
+  };
+
+  const handleRemoveClip = (id: number) => {
+    setClips(prevClips => prevClips.filter(clip => clip.id !== id));
+  };
+
+  const handleClearLibrary = () => {
+    setClips([]);
+  };
+
+  const handleClipDragStart = (clip: VideoClip) => {
+    setIsDragging(true);
+    setDraggedClip(clip);
+  };
+
+  const handleClipDragEnd = () => {
+    setIsDragging(false);
+    setDraggedClip(null);
+  };
+
+  const handleClipRemove = (id: number) => {
+    setTimelineClips(prevClips => prevClips.filter(clip => clip.id !== id));
+  };
+
+  const handleDownloadClips = async () => {
+    if (clips.length === 0) {
       toast({
-        title: "No video files found",
-        description: "Please select video files (mp4, avi, mov, etc.)",
+        title: "No clips to download",
+        description: "Generate clips first",
         variant: "destructive",
       });
       return;
     }
 
-    progressTracker.startProgress(videoFiles.length, "Processing videos");
-    const newSourceVideos: SourceVideo[] = [];
-    
-    for (let i = 0; i < videoFiles.length; i++) {
-      const file = videoFiles[i];
-      progressTracker.updateProgress(i + 1, `Processing ${file.name}`);
-      
-      const videoElement = document.createElement('video');
-      videoElement.preload = 'metadata';
-      
-      try {
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error(`Timeout loading video: ${file.name}`));
-          }, 10000);
-          
-          videoElement.onloadedmetadata = () => {
-            clearTimeout(timeout);
-            resolve(null);
-          };
-          videoElement.onerror = () => {
-            clearTimeout(timeout);
-            reject(new Error(`Failed to load video: ${file.name}`));
-          };
-          videoElement.src = URL.createObjectURL(file);
-        });
-        
-        const duration = videoElement.duration;
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 160;
-        canvas.height = 90;
-        videoElement.currentTime = Math.min(1, duration / 2);
-        
-        await new Promise(resolve => {
-          videoElement.onseeked = () => {
-            if (ctx) {
-              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-            }
-            resolve(null);
-          };
-        });
-        
-        const thumbnail = canvas.toDataURL();
-        URL.revokeObjectURL(videoElement.src);
-        
-        const sourceVideo: SourceVideo = {
-          id: `source-${Date.now()}-${Math.random()}`,
-          name: file.name.replace(/\.[^/.]+$/, ''),
-          file,
-          duration,
-          thumbnail,
-        };
-        
-        newSourceVideos.push(sourceVideo);
-      } catch (error) {
-        console.error('Error processing video:', error);
-        toast({
-          title: "Video processing failed",
-          description: `Could not process ${file.name}`,
-          variant: "destructive",
-        });
-      }
-    }
-    
-    progressTracker.completeProgress();
-    
-    if (newSourceVideos.length > 0) {
-      setSourceVideos(prev => [...prev, ...newSourceVideos]);
-      toast({
-        title: "Videos uploaded",
-        description: `${newSourceVideos.length} video(s) added to library`,
-      });
-    }
-  };
+    startProgress(clips.length, 'Preparing clips for download...');
 
-  // Event handlers with toast notifications
-  const handleClipsGenerated = (generatedClips: VideoClip[]) => {
-    setClips(generatedClips);
-    toast({
-      title: "Clips ready",
-      description: `${generatedClips.length} clips generated and ready to add to timeline`,
+    const zip = new (window as any).JSZip();
+    clips.forEach((clip, index) => {
+      zip.file(clip.name, clip.sourceFile.slice(clip.startTime * 1000, clip.duration * 1000, clip.sourceFile.type));
+      updateProgress(index + 1, `Adding ${clip.name} to ZIP...`);
     });
-  };
 
-  const handleClipAddWithToast = (clip: VideoClip) => {
-    handleClipAdd(clip);
-    toast({
-      title: "Clip added",
-      description: `${clip.name} has been added to the timeline`,
-    });
-  };
+    completeProgress();
 
-  const handleDownloadClips = async () => {
     try {
-      await ZipDownloaderService.downloadClipsAsZip(timelineClips);
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'video-clips.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
       toast({
-        title: "Success",
-        description: `Downloaded ${timelineClips.length} clips as ZIP file`,
+        title: "Download started",
+        description: "Your clips are being downloaded as a ZIP file",
       });
     } catch (error) {
-      console.error('ZIP download error:', error);
+      console.error("Error generating ZIP file:", error);
       toast({
-        title: "Download Failed",
-        description: error instanceof Error ? error.message : "Failed to create ZIP file",
+        title: "Download failed",
+        description: "Failed to create ZIP file. Check console for details.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleGenerateClips = async (config: any) => {
+    if (sourceVideos.length === 0) {
+      toast({
+        title: "No videos uploaded",
+        description: "Please upload videos first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationProgress(0);
+
+    const videosToProcess = config.videoSelectionMode === 'all' ? sourceVideos : sourceVideos.slice(0, config.numVideos);
+    const totalClips = videosToProcess.length * config.numClips;
+
+    startProgress(totalClips, 'Generating clips...');
+
+    try {
+      let currentClipCount = 0;
+      for (const video of videosToProcess) {
+        for (let i = 0; i < config.numClips; i++) {
+          const startTime = Math.random() * (video.duration - config.clipDuration);
+          const clip: VideoClip = {
+            id: nextClipId.current++,
+            name: `Clip ${nextClipId.current - 1} from ${video.name}`,
+            sourceFile: video,
+            startTime: startTime,
+            duration: config.clipDuration,
+            position: 0,
+          };
+          setClips(prevClips => [...prevClips, clip]);
+          currentClipCount++;
+          const progressValue = (currentClipCount / totalClips) * 100;
+          setGenerationProgress(progressValue);
+          updateProgress(currentClipCount, `Generating clip ${currentClipCount}/${totalClips}`);
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+
+      completeProgress();
+      toast({
+        title: "Clips generated",
+        description: `Successfully generated ${totalClips} clips`,
+      });
+    } catch (error) {
+      console.error("Error generating clips:", error);
+      toast({
+        title: "Clip generation failed",
+        description: "An error occurred while generating clips.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleRandomizeAll = () => {
+    setTimelineClips(prevClips => {
+      const newClips = [...prevClips];
+      for (let i = newClips.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newClips[i], newClips[j]] = [newClips[j], newClips[i]];
+      }
+      return newClips.map((clip, index) => ({ ...clip, position: index * clip.duration }));
+    });
+  };
+
+  const handleRandomizeTimed = (duration: number) => {
+    const numClips = duration * 60;
+    const availableClips = [...clips];
+    const selectedClips: VideoClip[] = [];
+
+    for (let i = 0; i < numClips && availableClips.length > 0; i++) {
+      const randomIndex = Math.floor(Math.random() * availableClips.length);
+      selectedClips.push(availableClips[randomIndex]);
+      availableClips.splice(randomIndex, 1);
+    }
+
+    setTimelineClips(selectedClips.map((clip, index) => ({ ...clip, position: index })));
+  };
+
+  const handleCancelProcessing = async () => {
+    setIsGenerating(false);
+    resetProgress();
+    try {
+      await VideoCompilerService.cancelCurrentJob();
+      toast({
+        title: "Processing cancelled",
+        description: "All ongoing processing has been cancelled.",
+      });
+    } catch (error) {
+      console.error("Error cancelling processing:", error);
+      toast({
+        title: "Cancellation failed",
+        description: "Failed to cancel processing. Check console for details.",
         variant: "destructive",
       });
     }
   };
 
   const handleCompile = async () => {
+    if (timelineClips.length === 0) {
+      toast({
+        title: "No clips to compile",
+        description: "Add clips to the timeline first",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsCompiling(true);
       setCompilationProgress(0);
-      setCompilationStage('Initializing...');
-      
-      const config = {
-        totalDuration,
-        clipOrder: timelineClips.map(clip => clip.id),
-        zoom,
-        playheadPosition,
-      };
-      
+      setCompilationStage('Initializing compilation...');
+      setLastCompilationResult(undefined);
+
+      console.log('TimelineEditor: Starting compilation of', timelineClips.length, 'clips');
+
       const result = await VideoCompilerService.compileTimeline(
-        timelineClips, 
-        config, 
+        timelineClips,
+        { totalDuration, clipOrder: timelineClips.map(c => c.id), zoom, playheadPosition },
         onExport,
-        (progress: number, stage: string) => {
+        (progress, stage) => {
+          console.log('TimelineEditor: Compilation progress:', progress, stage);
           setCompilationProgress(progress);
           setCompilationStage(stage);
         }
       );
-      
+
+      console.log('TimelineEditor: Compilation completed successfully:', result);
       setLastCompilationResult(result);
+      setShowVideoPreview(true); // Auto-show preview when compilation completes
       
       toast({
-        title: "Compilation completed!",
-        description: "Your video has been processed successfully. Click 'Download Video' to save it.",
+        title: "Compilation Complete!",
+        description: `Video saved successfully. Click Preview to view or Download to save locally.`,
       });
     } catch (error) {
-      console.error('Compilation error:', error);
+      console.error('TimelineEditor: Compilation failed:', error);
       toast({
-        title: "Compilation failed",
-        description: error instanceof Error ? error.message : "There was an error processing your video",
+        title: "Compilation Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive",
       });
     } finally {
@@ -243,120 +306,179 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   };
 
-  const handleExportJSON = () => {
-    VideoCompilerService.exportTimelineJSON(timelineClips, totalDuration, zoom, playheadPosition);
-    toast({
-      title: "Timeline exported",
-      description: "Timeline configuration saved as JSON",
-    });
-  };
-
   return (
-    <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-col overflow-hidden">
-      <EditorHeader
-        isPlaying={isPlaying}
-        isCompiling={isCompiling}
-        compilationProgress={compilationProgress}
-        compilationStage={compilationStage}
-        timelineClipsLength={timelineClips.length}
-        onTogglePlayback={togglePlayback}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onReset={() => {
-          handleReset();
-          toast({ title: "Timeline reset", description: "All clips have been removed and settings reset" });
-        }}
-        onClearTimeline={() => {
-          handleClearTimeline();
-          toast({ title: "Timeline cleared", description: "All clips have been removed from timeline" });
-        }}
-        onExportJSON={handleExportJSON}
-        onCompile={handleCompile}
-        onDownloadClips={handleDownloadClips}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        lastCompilationResult={lastCompilationResult}
-      />
-
-      <StatusBar
-        isActive={progressTracker.progress.isActive}
-        current={progressTracker.progress.current}
-        total={progressTracker.progress.total}
-        message={progressTracker.progress.message}
-      />
-
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800">
+      {/* Header */}
+      <EditorHeader />
+      
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
           <SidebarSection
+            title="1. Upload Videos"
+            isActive={activeStep === 'upload'}
+            onToggle={() => setActiveStep(activeStep === 'upload' ? null : 'upload')}
+          >
+            <VideoUploadStep
+              onFilesSelected={handleFilesSelected}
+              selectedFiles={sourceVideos}
+              onRemoveFile={handleRemoveFile}
+              onClearAll={handleClearAll}
+            />
+          </SidebarSection>
+
+          <SidebarSection
+            title="2. Configure"
+            isActive={activeStep === 'configure'}
+            onToggle={() => setActiveStep(activeStep === 'configure' ? null : 'configure')}
+          >
+            <ConfigurationStep
+              config={{
+                numClips: 3,
+                clipDuration: 5,
+                randomSelection: true,
+                videoSelectionMode: 'all' as const,
+                numVideos: Math.min(20, sourceVideos.length),
+              }}
+              sourceVideosCount={sourceVideos.length}
+              onConfigChange={() => {}}
+            />
+          </SidebarSection>
+
+          <SidebarSection
+            title="3. Generate & Randomize"
+            isActive={activeStep === 'randomize'}
+            onToggle={() => setActiveStep(activeStep === 'randomize' ? null : 'randomize')}
+          >
+            <RandomizeStep
+              onGenerateClips={handleGenerateClips}
+              onRandomizeAll={handleRandomizeAll}
+              onRandomizeTimed={handleRandomizeTimed}
+              onCancelProcessing={handleCancelProcessing}
+              isGenerating={isGenerating}
+              generationProgress={generationProgress}
+              config={{
+                numClips: 3,
+                clipDuration: 5,
+                randomSelection: true,
+                videoSelectionMode: 'all' as const,
+                numVideos: Math.min(20, sourceVideos.length),
+              }}
+            />
+          </SidebarSection>
+
+          <ClipLibrary
             clips={clips}
-            sourceVideos={sourceVideos}
-            timelineClips={timelineClips}
-            onClipAdd={handleClipAddWithToast}
-            onClipsUpdate={setClips}
-            onSourceVideosUpdate={setSourceVideos}
-            onClipsGenerated={handleClipsGenerated}
-            onRandomizeAll={() => {
-              try {
-                handleRandomizeAll();
-                toast({
-                  title: "Clips added",
-                  description: "New clips added to timeline",
-                });
-              } catch (error) {
-                toast({
-                  title: "No clips available",
-                  description: "Generate clips first before adding to timeline",
-                  variant: "destructive",
-                });
-              }
-            }}
-            onVideoUpload={handleVideoUpload}
-            onBulkUpload={(files) => {
-              handleVideoUpload(files);
-              toast({
-                title: "Bulk upload complete",
-                description: `${files.length} files imported from directory`,
-              });
-            }}
+            onAddToTimeline={handleAddToTimeline}
+            onRemoveClip={handleRemoveClip}
+            onClearLibrary={handleClearLibrary}
+            isGenerating={isGenerating}
+            generationProgress={generationProgress}
+            onCancelProcessing={handleCancelProcessing}
           />
-        </ResizablePanel>
+        </div>
 
-        <ResizableHandle withHandle />
-
-        <ResizablePanel defaultSize={75}>
-          <ResizablePanelGroup direction="vertical">
-            <ResizablePanel defaultSize={60} minSize={30}>
-              <VideoPlayerSection
-                timelineClips={timelineClips}
-                playheadPosition={playheadPosition}
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Video Player */}
+          <div className="h-1/2 border-b border-slate-700/50">
+            <VideoPlayerSection
+              timelineClips={timelineClips}
+              playheadPosition={playheadPosition}
+              isPlaying={isPlaying}
+              onTimeUpdate={setPlayheadPosition}
+            />
+          </div>
+          
+          {/* Timeline */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <TimelineMain
+              clips={timelineClips}
+              totalDuration={totalDuration}
+              zoom={zoom}
+              playheadPosition={playheadPosition}
+              isDragging={isDragging}
+              draggedClip={draggedClip}
+              onClipDragStart={handleClipDragStart}
+              onClipDragEnd={handleClipDragEnd}
+              onClipRemove={handleClipRemove}
+              onPlayheadMove={setPlayheadPosition}
+            />
+            
+            {/* Controls */}
+            <div className="border-t border-slate-700/50 bg-slate-800/30 backdrop-blur-sm p-4">
+              <TimelineControls
                 isPlaying={isPlaying}
-                onTimeUpdate={setPlayheadPosition}
-              />
-            </ResizablePanel>
-
-            <ResizableHandle withHandle />
-
-            <ResizablePanel defaultSize={40} minSize={25}>
-              <TimelineMain
-                timelineState={timelineState}
-                onClipRemove={(clipId) => {
-                  handleClipRemove(clipId);
-                  toast({ title: "Clip removed", description: "Clip has been removed from timeline" });
-                }}
+                isCompiling={isCompiling}
+                compilationProgress={compilationProgress}
+                compilationStage={compilationStage}
+                timelineClipsLength={timelineClips.length}
                 onTogglePlayback={togglePlayback}
                 onZoomIn={handleZoomIn}
                 onZoomOut={handleZoomOut}
+                onReset={handleReset}
+                onClearTimeline={handleClearTimeline}
+                onExportJSON={handleExportJSON}
+                onCompile={handleCompile}
+                onDownloadClips={handleDownloadClips}
+                onOpenSettings={() => setShowSettings(true)}
+                lastCompilationResult={lastCompilationResult}
+                showVideoPreview={showVideoPreview}
+                onCloseVideoPreview={() => setShowVideoPreview(!showVideoPreview)}
               />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <SettingsPanel
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+      {/* Status Bar */}
+      <StatusBar
+        isActive={progress.isActive}
+        current={progress.current}
+        total={progress.total}
+        message={progress.message}
       />
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <SettingsPanel onClose={() => setShowSettings(false)} />
+      )}
+
+      <Toaster />
     </div>
   );
 };
 
 export default TimelineEditor;
+
+interface SidebarSectionProps {
+  title: string;
+  children: React.ReactNode;
+  isActive: boolean;
+  onToggle: () => void;
+}
+
+const SidebarSection: React.FC<SidebarSectionProps> = ({ title, children, isActive, onToggle }) => {
+  return (
+    <div className="border-b border-slate-700/50">
+      <button
+        className="flex items-center justify-between w-full p-4 text-sm font-semibold text-slate-200 hover:bg-slate-700/50 transition-colors"
+        onClick={onToggle}
+      >
+        {title}
+        <svg
+          className={`w-4 h-4 text-slate-400 transition-transform ${isActive ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+      </button>
+      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isActive ? 'visible' : 'hidden'}`}>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
+  );
+};
