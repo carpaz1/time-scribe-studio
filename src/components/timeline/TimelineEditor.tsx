@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { VideoClip, CompileRequest } from '@/types/timeline';
@@ -105,6 +104,81 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     toast({
       title: "Clips ready",
       description: `${generatedClips.length} clips generated and ready to add to timeline`,
+    });
+  };
+
+  const handleVideoUpload = async (files: File[]) => {
+    // Convert File[] to SourceVideo[]
+    const newSourceVideos: SourceVideo[] = [];
+    
+    for (const file of files) {
+      // Create video element to get duration and thumbnail
+      const videoElement = document.createElement('video');
+      videoElement.preload = 'metadata';
+      
+      try {
+        await new Promise((resolve, reject) => {
+          videoElement.onloadedmetadata = () => resolve(null);
+          videoElement.onerror = () => reject(new Error(`Failed to load video: ${file.name}`));
+          videoElement.src = URL.createObjectURL(file);
+        });
+        
+        const duration = videoElement.duration;
+        
+        // Create thumbnail
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 160;
+        canvas.height = 90;
+        videoElement.currentTime = Math.min(1, duration / 2);
+        
+        await new Promise(resolve => {
+          videoElement.onseeked = () => {
+            if (ctx) {
+              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+            }
+            resolve(null);
+          };
+        });
+        
+        const thumbnail = canvas.toDataURL();
+        URL.revokeObjectURL(videoElement.src);
+        
+        const sourceVideo: SourceVideo = {
+          id: `source-${Date.now()}-${Math.random()}`,
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          file,
+          duration,
+          thumbnail,
+        };
+        
+        newSourceVideos.push(sourceVideo);
+      } catch (error) {
+        console.error('Error processing video:', error);
+        // Create fallback SourceVideo with default values
+        const sourceVideo: SourceVideo = {
+          id: `source-${Date.now()}-${Math.random()}`,
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          file,
+          duration: 0,
+          thumbnail: '',
+        };
+        newSourceVideos.push(sourceVideo);
+      }
+    }
+    
+    setSourceVideos(prev => [...prev, ...newSourceVideos]);
+    toast({
+      title: "Videos uploaded",
+      description: `${files.length} video(s) added to library`,
+    });
+  };
+
+  const handleBulkUpload = (files: File[]) => {
+    handleVideoUpload(files);
+    toast({
+      title: "Bulk upload complete",
+      description: `${files.length} files imported from directory`,
     });
   };
 
@@ -286,6 +360,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onSourceVideosUpdate={setSourceVideos}
             onClipsGenerated={handleClipsGenerated}
             onRandomizeAll={handleRandomizeAllWithToast}
+            onVideoUpload={handleVideoUpload}
+            onBulkUpload={handleBulkUpload}
           />
         </ResizablePanel>
 

@@ -11,14 +11,22 @@ import LibraryClipThumbnail from './LibraryClipThumbnail';
 import BulkDirectorySelector from './BulkDirectorySelector';
 import SettingsPanel from './SettingsPanel';
 
+interface SourceVideo {
+  name: string;
+  file: File;
+  duration: number;
+}
+
 interface ClipLibraryProps {
   clips: VideoClip[];
-  sourceVideos: File[];
+  sourceVideos: SourceVideo[];
   onClipAdd: (clip: VideoClip) => void;
   onClipsUpdate: (clips: VideoClip[]) => void;
-  onSourceVideosUpdate: (videos: File[]) => void;
+  onSourceVideosUpdate: (videos: SourceVideo[]) => void;
   onClipsGenerated: (clips: VideoClip[]) => void;
   onRandomizeAll: () => void;
+  onVideoUpload: (files: File[]) => void;
+  onBulkUpload: (files: File[]) => void;
 }
 
 const ClipLibrary: React.FC<ClipLibraryProps> = ({
@@ -29,6 +37,8 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
   onSourceVideosUpdate,
   onClipsGenerated,
   onRandomizeAll,
+  onVideoUpload,
+  onBulkUpload,
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
@@ -36,19 +46,11 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
   const { toast } = useToast();
 
   const handleVideoUpload = (files: File[]) => {
-    onSourceVideosUpdate([...sourceVideos, ...files]);
-    toast({
-      title: "Videos uploaded",
-      description: `${files.length} video(s) added to library`,
-    });
+    onVideoUpload(files);
   };
 
   const handleBulkUpload = (files: File[]) => {
-    handleVideoUpload(files);
-    toast({
-      title: "Bulk upload complete",
-      description: `${files.length} videos imported from directory`,
-    });
+    onBulkUpload(files);
   };
 
   const createThumbnail = async (file: File, startTime: number = 0): Promise<string> => {
@@ -106,21 +108,10 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
       const newClips: VideoClip[] = [];
       
       for (let i = 0; i < sourceVideos.length; i++) {
-        const video = sourceVideos[i];
+        const sourceVideo = sourceVideos[i];
         setGenerationProgress(((i + 1) / sourceVideos.length) * 100);
         
-        // Create video element to get duration
-        const videoElement = document.createElement('video');
-        videoElement.preload = 'metadata';
-        
-        await new Promise((resolve, reject) => {
-          videoElement.onloadedmetadata = () => resolve(null);
-          videoElement.onerror = () => reject(new Error(`Failed to load video: ${video.name}`));
-          videoElement.src = URL.createObjectURL(video);
-        });
-        
-        const duration = videoElement.duration;
-        URL.revokeObjectURL(videoElement.src);
+        const duration = sourceVideo.duration;
         
         if (duration > 0) {
           // Generate multiple clips per video
@@ -133,12 +124,12 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             
             if (clipDuration > 0.5) {
               // Generate thumbnail for this clip
-              const thumbnail = await createThumbnail(video, startTime);
+              const thumbnail = await createThumbnail(sourceVideo.file, startTime);
               
               const clip: VideoClip = {
                 id: `${Date.now()}-${i}-${j}`,
-                name: `${video.name.replace(/\.[^/.]+$/, "")} - Clip ${j + 1}`,
-                sourceFile: video,
+                name: `${sourceVideo.name} - Clip ${j + 1}`,
+                sourceFile: sourceVideo.file,
                 startTime,
                 duration: clipDuration,
                 position: 0,

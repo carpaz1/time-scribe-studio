@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { VideoClip, SourceVideo } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
 
 interface BulkDirectorySelectorProps {
@@ -182,7 +183,6 @@ const BulkDirectorySelector: React.FC<BulkDirectorySelectorProps> = ({
       const shuffledClips = shuffleArray(generatedClips);
 
       onBulkUpload(selectedFiles.pictures.concat(selectedFiles.videos));
-      onClipsGenerated(shuffledClips);
 
       toast({
         title: "Bulk processing complete",
