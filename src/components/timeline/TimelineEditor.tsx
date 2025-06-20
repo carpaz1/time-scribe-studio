@@ -1,21 +1,17 @@
+
 import React, { useRef, useState } from 'react';
-import JSZip from 'jszip';
 import { VideoClip, SourceVideo, CompileRequest } from '@/types/timeline';
 import { useTimelineState } from '@/hooks/useTimelineState';
 import { usePlaybackControl } from '@/hooks/usePlaybackControl';
 import { VideoCompilerService } from '@/services/videoCompiler';
 import { useToast } from '@/hooks/use-toast';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import TimelineTrack from './TimelineTrack';
-import Playhead from './Playhead';
-import TimelineRuler from './TimelineRuler';
-import ClipLibrary from './ClipLibrary';
-import VideoPlayer from './VideoPlayer';
-import SettingsPanel from './SettingsPanel';
-import EditorHeader from './EditorHeader';
-import TimelineInfoBar from './TimelineInfoBar';
-import PlaybackControls from './PlaybackControls';
 import { ZipDownloaderService } from '@/services/zipDownloader';
+import TimelineMain from './TimelineMain';
+import VideoPlayerSection from './VideoPlayerSection';
+import SidebarSection from './SidebarSection';
+import EditorHeader from './EditorHeader';
+import SettingsPanel from './SettingsPanel';
 
 interface TimelineEditorProps {
   initialClips?: VideoClip[];
@@ -26,7 +22,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   initialClips = [], 
   onExport 
 }) => {
-  const timelineRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [lastCompilationResult, setLastCompilationResult] = useState<{ downloadUrl?: string; outputFile?: string }>();
   const [compilationProgress, setCompilationProgress] = useState(0);
@@ -34,6 +29,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // State management
+  const timelineState = useTimelineState(initialClips);
   const {
     clips,
     sourceVideos,
@@ -59,7 +55,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     handleReset,
     handleClearTimeline,
     handleRandomizeAll,
-  } = useTimelineState(initialClips);
+  } = timelineState;
 
   // Playback control
   const { togglePlayback } = usePlaybackControl({
@@ -70,57 +66,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     totalDuration,
   });
 
-  // Enhanced zoom controls with shift+scroll
+  // Enhanced zoom controls
   const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 10));
   const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.1));
 
-  // Timeline interaction with enhanced scroll support
-  const handleTimelineClick = (e: React.MouseEvent) => {
-    if (!timelineRef.current) return;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const newPosition = (x / rect.width) * (totalDuration / zoom);
-    setPlayheadPosition(Math.max(0, Math.min(totalDuration, newPosition)));
-  };
-
-  const handleTimelineScroll = (e: React.WheelEvent) => {
-    if (e.shiftKey) {
-      e.preventDefault();
-      if (e.deltaY < 0) {
-        handleZoomIn();
-      } else {
-        handleZoomOut();
-      }
-    } else {
-      const scrollAmount = e.deltaY * 0.5;
-      setTimelineScrollOffset(prev => Math.max(0, prev + scrollAmount));
-    }
-  };
-
-  // Video player events
-  const handleVideoTimeUpdate = (time: number) => {
-    setPlayheadPosition(time);
-  };
-
-  // Clip library events
-  const handleClipsGenerated = (generatedClips: VideoClip[]) => {
-    setClips(generatedClips);
-    toast({
-      title: "Clips ready",
-      description: `${generatedClips.length} clips generated and ready to add to timeline`,
-    });
-  };
-
+  // Video upload handler
   const handleVideoUpload = async (files: File[]) => {
-    // Filter for actual video files only
     const videoFiles = files.filter(file => {
       const isVideo = file.type.startsWith('video/') || 
                      file.name.toLowerCase().match(/\.(mp4|avi|mov|wmv|flv|webm|mkv|m4v)$/);
-      
-      if (!isVideo) {
-        console.log(`Skipping non-video file: ${file.name} (type: ${file.type})`);
-      }
-      
       return isVideo;
     });
 
@@ -133,18 +87,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       return;
     }
 
-    if (videoFiles.length !== files.length) {
-      toast({
-        title: "Some files skipped",
-        description: `Only processing ${videoFiles.length} video files out of ${files.length} total files`,
-      });
-    }
-
-    // Convert File[] to SourceVideo[]
     const newSourceVideos: SourceVideo[] = [];
     
     for (const file of videoFiles) {
-      // Create video element to get duration and thumbnail
       const videoElement = document.createElement('video');
       videoElement.preload = 'metadata';
       
@@ -152,7 +97,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new Error(`Timeout loading video: ${file.name}`));
-          }, 10000); // 10 second timeout
+          }, 10000);
           
           videoElement.onloadedmetadata = () => {
             clearTimeout(timeout);
@@ -167,7 +112,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         
         const duration = videoElement.duration;
         
-        // Create thumbnail
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 160;
@@ -197,7 +141,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         newSourceVideos.push(sourceVideo);
       } catch (error) {
         console.error('Error processing video:', error);
-        // Skip failed videos instead of creating fallback entries
         toast({
           title: "Video processing failed",
           description: `Could not process ${file.name}`,
@@ -215,11 +158,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   };
 
-  const handleBulkUpload = (files: File[]) => {
-    handleVideoUpload(files);
+  // Event handlers with toast notifications
+  const handleClipsGenerated = (generatedClips: VideoClip[]) => {
+    setClips(generatedClips);
     toast({
-      title: "Bulk upload complete",
-      description: `${files.length} files imported from directory`,
+      title: "Clips ready",
+      description: `${generatedClips.length} clips generated and ready to add to timeline`,
     });
   };
 
@@ -231,62 +175,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
-  const handleClipRemoveWithToast = (clipId: string) => {
-    handleClipRemove(clipId);
-    toast({
-      title: "Clip removed",
-      description: "Clip has been removed from timeline",
-    });
-  };
-
-  const handleRandomizeAllWithToast = () => {
-    try {
-      const existingClipIds = new Set(timelineClips.map(clip => clip.id));
-      const availableClips = clips.filter(clip => !existingClipIds.has(clip.id));
-      
-      if (availableClips.length === 0) {
-        toast({
-          title: "No new clips",
-          description: "All available clips are already on the timeline",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      handleRandomizeAll();
-      toast({
-        title: "Clips added",
-        description: `${availableClips.length} new clips added to timeline`,
-      });
-    } catch (error) {
-      toast({
-        title: "No clips available",
-        description: "Generate clips first before adding to timeline",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleResetWithToast = () => {
-    handleReset();
-    toast({
-      title: "Timeline reset",
-      description: "All clips have been removed and settings reset",
-    });
-  };
-
-  const handleClearTimelineWithToast = () => {
-    handleClearTimeline();
-    toast({
-      title: "Timeline cleared",
-      description: "All clips have been removed from timeline",
-    });
-  };
-
-  // Enhanced download timeline clips functionality with zip
   const handleDownloadClips = async () => {
     try {
-      console.log('TimelineEditor: Starting ZIP download for', timelineClips.length, 'clips');
       await ZipDownloaderService.downloadClipsAsZip(timelineClips);
       toast({
         title: "Success",
@@ -302,7 +192,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     }
   };
 
-  // Enhanced compilation with real-time progress
   const handleCompile = async () => {
     try {
       setIsCompiling(true);
@@ -354,22 +243,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
-  const handleOpenSettings = () => {
-    setIsSettingsOpen(true);
-  };
-
-  const handleCloseSettings = () => {
-    setIsSettingsOpen(false);
-  };
-
-  // Create proper handler functions for ClipLibrary props
-  const handleSourceVideosUpdate = (videos: SourceVideo[]) => {
-    setSourceVideos(videos);
-  };
-
   return (
-    <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col overflow-hidden">
-      {/* Enhanced Header with Glassmorphism */}
+    <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-col overflow-hidden">
       <EditorHeader
         isPlaying={isPlaying}
         isCompiling={isCompiling}
@@ -379,123 +254,91 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         onTogglePlayback={togglePlayback}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
-        onReset={handleResetWithToast}
-        onClearTimeline={handleClearTimelineWithToast}
+        onReset={() => {
+          handleReset();
+          toast({ title: "Timeline reset", description: "All clips have been removed and settings reset" });
+        }}
+        onClearTimeline={() => {
+          handleClearTimeline();
+          toast({ title: "Timeline cleared", description: "All clips have been removed from timeline" });
+        }}
         onExportJSON={handleExportJSON}
         onCompile={handleCompile}
         onDownloadClips={handleDownloadClips}
-        onOpenSettings={handleOpenSettings}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         lastCompilationResult={lastCompilationResult}
       />
 
-      {/* Main Content with Resizable Panels */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Enhanced Clip Library Sidebar */}
         <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-          <ClipLibrary
+          <SidebarSection
             clips={clips}
             sourceVideos={sourceVideos}
             timelineClips={timelineClips}
             onClipAdd={handleClipAddWithToast}
             onClipsUpdate={setClips}
-            onSourceVideosUpdate={handleSourceVideosUpdate}
+            onSourceVideosUpdate={setSourceVideos}
             onClipsGenerated={handleClipsGenerated}
-            onRandomizeAll={handleRandomizeAllWithToast}
+            onRandomizeAll={() => {
+              try {
+                handleRandomizeAll();
+                toast({
+                  title: "Clips added",
+                  description: "New clips added to timeline",
+                });
+              } catch (error) {
+                toast({
+                  title: "No clips available",
+                  description: "Generate clips first before adding to timeline",
+                  variant: "destructive",
+                });
+              }
+            }}
             onVideoUpload={handleVideoUpload}
-            onBulkUpload={handleBulkUpload}
+            onBulkUpload={(files) => {
+              handleVideoUpload(files);
+              toast({
+                title: "Bulk upload complete",
+                description: `${files.length} files imported from directory`,
+              });
+            }}
           />
         </ResizablePanel>
 
         <ResizableHandle withHandle />
 
-        {/* Main Content Area */}
         <ResizablePanel defaultSize={75}>
           <ResizablePanelGroup direction="vertical">
-            {/* Enhanced Video Player */}
             <ResizablePanel defaultSize={60} minSize={30}>
-              <div className="bg-gradient-to-br from-slate-800/40 to-slate-900/60 backdrop-blur-sm h-full p-6">
-                <div className="w-full h-full bg-slate-900/70 rounded-2xl border border-slate-700/50 overflow-hidden shadow-2xl backdrop-blur-md">
-                  <VideoPlayer
-                    clips={timelineClips}
-                    currentTime={playheadPosition}
-                    isPlaying={isPlaying}
-                    onTimeUpdate={handleVideoTimeUpdate}
-                  />
-                </div>
-              </div>
+              <VideoPlayerSection
+                timelineClips={timelineClips}
+                playheadPosition={playheadPosition}
+                isPlaying={isPlaying}
+                onTimeUpdate={setPlayheadPosition}
+              />
             </ResizablePanel>
-
-            {/* NEW: Playback Controls - Between Video Player and Timeline */}
-            <PlaybackControls
-              isPlaying={isPlaying}
-              zoom={zoom}
-              timelineClipsLength={timelineClips.length}
-              totalDuration={totalDuration}
-              playheadPosition={playheadPosition}
-              onTogglePlayback={togglePlayback}
-              onZoomIn={handleZoomIn}
-              onZoomOut={handleZoomOut}
-              onReset={handleResetWithToast}
-              onClearTimeline={handleClearTimelineWithToast}
-            />
 
             <ResizableHandle withHandle />
 
-            {/* Enhanced Timeline Section */}
             <ResizablePanel defaultSize={40} minSize={25}>
-              <div className="flex flex-col h-full">
-                {/* Enhanced Timeline Info Bar */}
-                <TimelineInfoBar
-                  timelineClipsLength={timelineClips.length}
-                  totalDuration={totalDuration}
-                  zoom={zoom}
-                  playheadPosition={playheadPosition}
-                />
-
-                {/* Enhanced Timeline Container */}
-                <div className="flex-1 overflow-hidden bg-gradient-to-br from-slate-900/90 to-slate-800/90">
-                  <div className="h-full flex flex-col" onWheel={handleTimelineScroll}>
-                    <TimelineRuler
-                      totalDuration={totalDuration}
-                      zoom={zoom}
-                      playheadPosition={playheadPosition}
-                    />
-                    
-                    <div
-                      ref={timelineRef}
-                      className="flex-1 relative bg-gradient-to-r from-slate-800/60 via-slate-700/60 to-slate-800/60 backdrop-blur-sm border-t border-slate-600/50 cursor-pointer shadow-inner"
-                      onClick={handleTimelineClick}
-                    >
-                      <TimelineTrack
-                        clips={timelineClips}
-                        totalDuration={totalDuration}
-                        zoom={zoom}
-                        onClipRemove={handleClipRemoveWithToast}
-                        onClipReorder={handleClipReorder}
-                        draggedClip={draggedClip}
-                        setDraggedClip={setDraggedClip}
-                        scrollOffset={timelineScrollOffset}
-                      />
-                      
-                      <Playhead
-                        position={playheadPosition}
-                        totalDuration={totalDuration}
-                        zoom={zoom}
-                        onPositionChange={setPlayheadPosition}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <TimelineMain
+                timelineState={timelineState}
+                onClipRemove={(clipId) => {
+                  handleClipRemove(clipId);
+                  toast({ title: "Clip removed", description: "Clip has been removed from timeline" });
+                }}
+                onTogglePlayback={togglePlayback}
+                onZoomIn={handleZoomIn}
+                onZoomOut={handleZoomOut}
+              />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      {/* Settings Panel */}
       <SettingsPanel
         isOpen={isSettingsOpen}
-        onClose={handleCloseSettings}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );
