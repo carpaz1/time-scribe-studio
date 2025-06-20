@@ -1,4 +1,3 @@
-
 import { VideoClip } from '@/types/timeline';
 import { CompilationService } from '@/services/compilationService';
 
@@ -54,13 +53,19 @@ export class VideoCompilationService {
     }
   }
 
-  private static async generateClipsFromVideos(
+  static async generateClipsFromVideos(
     sourceVideos: File[],
     targetDuration: number,
     onProgress?: (progress: number, stage: string) => void
-  ): Promise<VideoClip[]> {
+  ): Promise<{ clips: VideoClip[] }> {
+    console.log('VideoCompilationService: Generating clips from videos...');
+    
+    if (sourceVideos.length === 0) {
+      throw new Error('No source videos available');
+    }
+
     const clips: VideoClip[] = [];
-    const clipDuration = Math.min(5, targetDuration / Math.max(sourceVideos.length, 1)); // Max 5 seconds per clip
+    const clipDuration = Math.min(5, targetDuration / Math.max(sourceVideos.length, 1));
     
     onProgress?.(10, 'Creating video clips...');
 
@@ -68,7 +73,6 @@ export class VideoCompilationService {
       const file = sourceVideos[i];
       
       try {
-        // Create a basic video element to get duration
         const video = document.createElement('video');
         video.preload = 'metadata';
         
@@ -83,10 +87,8 @@ export class VideoCompilationService {
           video.src = URL.createObjectURL(file);
         });
 
-        // Clean up the video element
         URL.revokeObjectURL(video.src);
 
-        // Generate clip with random start time
         const maxStartTime = Math.max(0, duration - clipDuration);
         const startTime = Math.random() * maxStartTime;
 
@@ -95,7 +97,7 @@ export class VideoCompilationService {
           name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${i + 1}`,
           startTime,
           duration: Math.min(clipDuration, duration - startTime),
-          thumbnail: '', // Will be generated later if needed
+          thumbnail: '',
           sourceFile: file,
           position: i * clipDuration,
           originalVideoId: `video_${i}`
@@ -103,17 +105,17 @@ export class VideoCompilationService {
 
         clips.push(clip);
         
-        const progress = 10 + ((i + 1) / sourceVideos.length) * 20;
+        const progress = 10 + ((i + 1) / sourceVideos.length) * 90;
         onProgress?.(progress, `Generated clip ${i + 1}/${sourceVideos.length}`);
 
       } catch (error) {
         console.error(`Error generating clip from ${file.name}:`, error);
-        // Continue with other files even if one fails
       }
     }
 
+    onProgress?.(100, `Generated ${clips.length} clips successfully!`);
     console.log(`VideoCompilationService: Generated ${clips.length} clips from ${sourceVideos.length} videos`);
-    return clips;
+    return { clips };
   }
 
   static async compileTimeline(

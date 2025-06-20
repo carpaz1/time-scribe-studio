@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen, AlertCircle, Brain } from 'lucide-react';
+import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen, AlertCircle, Brain, Image } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useSaveFolder } from '@/hooks/useSaveFolder';
 import AISettingsPanel from './AISettingsPanel';
+import BackgroundSettings from './BackgroundSettings';
 
 interface SettingsPanelProps {
   isOpen: boolean;

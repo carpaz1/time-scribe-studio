@@ -1,4 +1,3 @@
-
 import React, { useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -10,7 +9,7 @@ import { useTimelineEditor } from '@/hooks/useTimelineEditor';
 import { usePlaybackControls } from '@/hooks/usePlaybackControls';
 import { VideoCompilationService } from './VideoCompilationService';
 import { ClipGenerationService } from './ClipGenerationService';
-import WorkflowPanel from './WorkflowPanel';
+import ImprovedWorkflowPanel from './ImprovedWorkflowPanel';
 import VideoPlayerSection from './VideoPlayerSection';
 import TimelineMain from './TimelineMain';
 import TimelineControls from './TimelineControls';
@@ -205,7 +204,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
           {/* Enhanced Sidebar */}
           <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <WorkflowPanel
+              <ImprovedWorkflowPanel
                 sourceVideos={state.sourceVideos}
                 onVideoUpload={handleFilesSelected}
                 onBulkUpload={handleFilesSelected}
