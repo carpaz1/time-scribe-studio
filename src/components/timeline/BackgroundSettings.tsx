@@ -1,11 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Image, Folder, Sparkles, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Image, Folder, Sparkles, Trash2, RefreshCw } from 'lucide-react';
 import { BackgroundService, BackgroundSettings as BgSettings } from '@/services/backgroundService';
 import { useToast } from '@/hooks/use-toast';
 
@@ -16,13 +16,26 @@ interface BackgroundSettingsProps {
 const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChange }) => {
   const [settings, setSettings] = useState<BgSettings>(BackgroundService.getSettings());
   const [isProcessing, setIsProcessing] = useState(false);
-  const [preview, setPreview] = useState(false);
+  const [currentImageName, setCurrentImageName] = useState<string>('');
   const { toast } = useToast();
 
   const updateSettings = (newSettings: Partial<BgSettings>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
     onSettingsChange?.(updated);
+    
+    // If there's a current background, reapply it with new settings
+    if (settings.type !== 'default' && currentImageName) {
+      // We need to store the current image URL and reapply
+      const existingStyle = document.getElementById('custom-background-style');
+      if (existingStyle) {
+        // Extract the image URL from the existing style
+        const match = existingStyle.textContent?.match(/url\('([^']+)'\)/);
+        if (match && match[1]) {
+          BackgroundService.applyBackground(match[1], updated);
+        }
+      }
+    }
   };
 
   const handleSingleImage = async () => {
@@ -33,6 +46,7 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
         const processedUrl = await BackgroundService.processImageForBackground(file, settings);
         BackgroundService.applyBackground(processedUrl, settings);
         updateSettings({ type: 'single', imagePath: file.name });
+        setCurrentImageName(file.name);
         toast({
           title: "Background applied",
           description: `Using ${file.name} as background`,
@@ -59,6 +73,7 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
           const processedUrl = await BackgroundService.processImageForBackground(randomFile, settings);
           BackgroundService.applyBackground(processedUrl, settings);
           updateSettings({ type: 'folder', folderPath: randomFile.webkitRelativePath });
+          setCurrentImageName(randomFile.name);
           toast({
             title: "Random background applied",
             description: `Using ${randomFile.name} from selected folder`,
@@ -79,11 +94,21 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
   const removeBackground = () => {
     BackgroundService.removeBackground();
     updateSettings({ type: 'default' });
+    setCurrentImageName('');
     toast({
       title: "Background removed",
       description: "Reverted to default theme",
     });
   };
+
+  // Initialize component state
+  useEffect(() => {
+    const currentSettings = BackgroundService.getSettings();
+    setSettings(currentSettings);
+    if (currentSettings.imagePath) {
+      setCurrentImageName(currentSettings.imagePath);
+    }
+  }, []);
 
   return (
     <Card className="bg-slate-700/50 border-slate-600">
@@ -130,8 +155,8 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
             <Slider
               value={[settings.opacity]}
               onValueChange={(value) => updateSettings({ opacity: value[0] })}
-              max={0.5}
-              min={0.05}
+              max={0.6}
+              min={0.1}
               step={0.05}
               className="w-full"
             />
@@ -145,7 +170,7 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
             <Slider
               value={[settings.blur]}
               onValueChange={(value) => updateSettings({ blur: value[0] })}
-              max={10}
+              max={8}
               min={0}
               step={1}
               className="w-full"
@@ -176,16 +201,33 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
               <Trash2 className="w-4 h-4 mr-2" />
               Remove
             </Button>
+            
+            {settings.type === 'folder' && (
+              <Button
+                onClick={handleFolderSelection}
+                variant="outline"
+                size="sm"
+                className="flex-1 border-purple-600 text-purple-300"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                New Random
+              </Button>
+            )}
           </div>
         )}
 
         {/* Current Status */}
         <div className="text-xs text-slate-400 bg-slate-800/50 p-3 rounded">
-          <strong>Current:</strong> {
+          <strong>Status:</strong> {
             settings.type === 'default' ? 'Default theme' :
-            settings.type === 'single' ? `Single image: ${settings.imagePath}` :
-            `Folder: ${settings.folderPath}`
+            settings.type === 'single' ? `Image: ${currentImageName || 'Unknown'}` :
+            `Folder: ${currentImageName || 'Unknown'}`
           }
+          {settings.type !== 'default' && (
+            <div className="mt-1 text-emerald-400">
+              Background active - opacity: {Math.round(settings.opacity * 100)}%, blur: {settings.blur}px
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
