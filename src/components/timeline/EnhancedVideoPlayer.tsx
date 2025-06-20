@@ -68,16 +68,41 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     }
   }, [currentTime, clips, currentClip?.id, videoSrc]);
 
-  // Enhanced video time synchronization
+  // Enhanced video time synchronization with proper validation
   useEffect(() => {
     if (videoRef.current && currentClip && videoSrc) {
       const video = videoRef.current;
       const timeInClip = currentTime - currentClip.position;
       const targetTime = currentClip.startTime + timeInClip;
       
-      // More precise time sync
-      if (Math.abs(video.currentTime - targetTime) > 0.1) {
-        video.currentTime = Math.max(0, Math.min(targetTime, video.duration));
+      // Validate all values before setting video time
+      const isValidTime = (time: number): boolean => {
+        return typeof time === 'number' && 
+               isFinite(time) && 
+               !isNaN(time) && 
+               time >= 0;
+      };
+      
+      // Only set time if all values are valid and video is ready
+      if (isValidTime(targetTime) && 
+          isValidTime(video.duration) && 
+          video.readyState >= 2) {
+        
+        const clampedTime = Math.max(0, Math.min(targetTime, video.duration));
+        
+        // More precise time sync with additional validation
+        if (Math.abs(video.currentTime - clampedTime) > 0.1) {
+          console.log('EnhancedVideoPlayer: Setting video time to:', clampedTime.toFixed(2));
+          video.currentTime = clampedTime;
+        }
+      } else {
+        console.warn('EnhancedVideoPlayer: Invalid time values detected:', {
+          targetTime,
+          timeInClip,
+          startTime: currentClip.startTime,
+          currentTime,
+          videoDuration: video.duration
+        });
       }
     }
   }, [currentTime, currentClip, videoSrc]);
@@ -132,12 +157,20 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current && currentClip && isPlaying) {
       const video = videoRef.current;
-      const timelineTime = currentClip.position + (video.currentTime - currentClip.startTime);
-      onTimeUpdate(timelineTime);
       
-      // Process frame for GPU effects
-      if (isGPUEnabled) {
-        processFrame();
+      // Validate video time before using it
+      if (isFinite(video.currentTime) && !isNaN(video.currentTime) && 
+          isFinite(currentClip.startTime) && !isNaN(currentClip.startTime)) {
+        const timelineTime = currentClip.position + (video.currentTime - currentClip.startTime);
+        
+        if (isFinite(timelineTime) && !isNaN(timelineTime)) {
+          onTimeUpdate(timelineTime);
+          
+          // Process frame for GPU effects
+          if (isGPUEnabled) {
+            processFrame();
+          }
+        }
       }
     }
   }, [currentClip, isPlaying, onTimeUpdate, processFrame, isGPUEnabled]);
