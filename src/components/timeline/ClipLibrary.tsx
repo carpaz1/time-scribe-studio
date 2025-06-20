@@ -281,7 +281,6 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
               </p>
               <div className="space-y-3">
                 <VideoUploader onVideoUpload={handleVideoUpload} />
-                <BulkDirectorySelector onBulkUpload={handleBulkUpload} />
               </div>
             </div>
           ) : (
