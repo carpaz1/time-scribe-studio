@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { VideoClip, SourceVideo, CompileRequest } from '@/types/timeline';
@@ -13,6 +12,7 @@ import TimelineRuler from './TimelineRuler';
 import ClipLibrary from './ClipLibrary';
 import VideoPlayer from './VideoPlayer';
 import TimelineControls from './TimelineControls';
+import SettingsPanel from './SettingsPanel';
 import { ZipDownloaderService } from '@/services/zipDownloader';
 
 interface TimelineEditorProps {
@@ -29,6 +29,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const [lastCompilationResult, setLastCompilationResult] = useState<{ downloadUrl?: string; outputFile?: string }>();
   const [compilationProgress, setCompilationProgress] = useState(0);
   const [compilationStage, setCompilationStage] = useState('');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // State management
   const {
@@ -314,6 +315,14 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
+  const handleOpenSettings = () => {
+    setIsSettingsOpen(true);
+  };
+
+  const handleCloseSettings = () => {
+    setIsSettingsOpen(false);
+  };
+
   // Create proper handler functions for ClipLibrary props
   const handleSourceVideosUpdate = (videos: SourceVideo[]) => {
     setSourceVideos(videos);
@@ -349,6 +358,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onExportJSON={handleExportJSON}
             onCompile={handleCompile}
             onDownloadClips={handleDownloadClips}
+            onOpenSettings={handleOpenSettings}
             lastCompilationResult={lastCompilationResult}
           />
         </div>
@@ -463,6 +473,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           </ResizablePanelGroup>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        isOpen={isSettingsOpen}
+        onClose={handleCloseSettings}
+      />
     </div>
   );
 };
