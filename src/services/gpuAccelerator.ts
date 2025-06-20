@@ -1,4 +1,29 @@
 
+// WebGPU type definitions (since they're not in the standard lib yet)
+interface GPUDevice {
+  createBuffer(descriptor: any): any;
+  createTexture(descriptor: any): any;
+  queue: {
+    submit(commandBuffers: any[]): void;
+    writeBuffer(buffer: any, bufferOffset: number, data: any): void;
+  };
+}
+
+interface GPUAdapter {
+  requestDevice(): Promise<GPUDevice>;
+}
+
+interface GPU {
+  requestAdapter(options?: { powerPreference?: string }): Promise<GPUAdapter | null>;
+}
+
+// Extend Navigator interface
+declare global {
+  interface Navigator {
+    gpu?: GPU;
+  }
+}
+
 class GPUAccelerator {
   private static instance: GPUAccelerator;
   private device: GPUDevice | null = null;
@@ -19,7 +44,7 @@ class GPUAccelerator {
     
     try {
       // Try WebGPU first (most modern)
-      if ('gpu' in navigator) {
+      if (navigator.gpu) {
         const adapter = await navigator.gpu.requestAdapter({
           powerPreference: 'high-performance'
         });
