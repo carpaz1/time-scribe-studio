@@ -14,54 +14,42 @@ const RandomBackgroundButton: React.FC = () => {
     try {
       const settings = BackgroundService.getSettings();
       
-      // If no folder is set, prompt user to select one first
-      if (settings.type !== 'folder') {
+      // Check if folder settings exist
+      if (settings.type !== 'folder' && !settings.folderPath) {
         toast({
-          title: "No folder selected",
-          description: "Please configure a background folder in Settings first",
+          title: "No folder configured",
+          description: "Please select a background folder in Settings first",
           variant: "destructive",
         });
         setIsChanging(false);
         return;
       }
 
-      // Get stored folder files or prompt to select again
-      const savedFolderData = localStorage.getItem('background-folder-files');
-      let folderFiles: File[] = [];
-      
-      if (savedFolderData) {
-        // We can't restore File objects from localStorage, so we need to ask user to select folder again
-        const files = await BackgroundService.selectImageFolder();
-        if (files) {
-          folderFiles = files;
-        }
-      } else {
-        const files = await BackgroundService.selectImageFolder();
-        if (files) {
-          folderFiles = files;
-          // Store folder info (though we can't persist actual File objects)
-          localStorage.setItem('background-folder-files', JSON.stringify({
-            count: files.length,
-            timestamp: Date.now()
-          }));
-        }
-      }
-
-      if (folderFiles.length > 0) {
-        const randomFile = BackgroundService.randomFromFolder(folderFiles);
+      // For persistent folder usage, ask user to select again (browser limitation)
+      const files = await BackgroundService.selectImageFolder();
+      if (files && files.length > 0) {
+        const randomFile = BackgroundService.randomFromFolder(files);
         if (randomFile) {
-          const processedUrl = await BackgroundService.processImageForBackground(randomFile, settings);
-          BackgroundService.applyBackground(processedUrl, settings);
+          const processedUrl = await BackgroundService.processImageForBackground(randomFile, {
+            ...settings,
+            aiEnhanced: true, // Force AI enhancement for full screen
+            imagePosition: 'pattern' // Full screen pattern
+          });
+          BackgroundService.applyBackground(processedUrl, {
+            ...settings,
+            aiEnhanced: true,
+            imagePosition: 'pattern'
+          });
           
           toast({
-            title: "Background changed",
+            title: "Random background applied",
             description: `Now using: ${randomFile.name}`,
           });
         }
       } else {
         toast({
           title: "No images found",
-          description: "Please select a folder with images in Settings",
+          description: "Selected folder contains no image files",
           variant: "destructive",
         });
       }

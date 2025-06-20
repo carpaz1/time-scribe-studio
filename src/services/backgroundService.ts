@@ -1,4 +1,3 @@
-
 interface BackgroundSettings {
   type: 'default' | 'single' | 'folder';
   imagePath?: string;
@@ -167,7 +166,7 @@ export class BackgroundService {
     let styleContent = '';
     
     if (settings.aiEnhanced && settings.imagePosition === 'pattern') {
-      // Full page overlay pattern
+      // Full screen overlay pattern for entire application
       styleContent = `
         body::before {
           content: '';
@@ -177,11 +176,12 @@ export class BackgroundService {
           width: 100vw;
           height: 100vh;
           background-image: url('${imageUrl}');
-          background-repeat: repeat;
-          background-size: 200px 200px;
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
           opacity: ${settings.opacity};
           filter: blur(${settings.blur}px);
-          z-index: -1;
+          z-index: -2;
           pointer-events: none;
         }
         .video-container::before {
@@ -192,11 +192,29 @@ export class BackgroundService {
           width: 100%;
           height: 100%;
           background-image: url('${imageUrl}');
-          background-repeat: repeat;
-          background-size: 100px 100px;
-          opacity: ${settings.opacity * 0.3};
-          filter: blur(${settings.blur * 0.5}px);
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          opacity: ${settings.opacity * 0.7};
+          filter: blur(${settings.blur * 0.8}px);
           z-index: 1;
+          pointer-events: none;
+        }
+        /* Apply to entire app container */
+        #root::before {
+          content: '';
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background-image: url('${imageUrl}');
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          opacity: ${settings.opacity * 0.3};
+          filter: blur(${settings.blur}px);
+          z-index: -1;
           pointer-events: none;
         }
       `;

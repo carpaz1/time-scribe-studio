@@ -9,6 +9,9 @@ interface GPUDevice {
   createRenderPipeline(descriptor: any): any;
   createComputePipeline(descriptor: any): any;
   createCommandEncoder(): any;
+  createBindGroup(descriptor: any): any;
+  createBindGroupLayout(descriptor: any): any;
+  createPipelineLayout(descriptor: any): any;
   queue: {
     submit(commandBuffers: any[]): void;
     writeBuffer(buffer: any, bufferOffset: number, data: any): void;

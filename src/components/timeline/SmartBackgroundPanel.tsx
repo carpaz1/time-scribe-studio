@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,22 +17,32 @@ const SmartBackgroundPanel: React.FC<SmartBackgroundPanelProps> = ({ onSettingsC
   const [settings, setSettings] = useState<BgSettings>(BackgroundService.getSettings());
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentImageName, setCurrentImageName] = useState<string>('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const { toast } = useToast();
 
   const updateSettings = (newSettings: Partial<BgSettings>) => {
     const updated = { ...settings, ...newSettings };
     setSettings(updated);
+    setHasUnsavedChanges(true);
     onSettingsChange?.(updated);
-    
+  };
+
+  const applySettings = () => {
+    // Save settings and apply background
     if (settings.type !== 'default' && currentImageName) {
       const existingStyle = document.getElementById('custom-background-style');
       if (existingStyle) {
         const match = existingStyle.textContent?.match(/url\('([^']+)'\)/);
         if (match && match[1]) {
-          BackgroundService.applyBackground(match[1], updated);
+          BackgroundService.applyBackground(match[1], settings);
         }
       }
     }
+    setHasUnsavedChanges(false);
+    toast({
+      title: "Settings applied",
+      description: "Background settings have been saved and applied",
+    });
   };
 
   const handleSingleImage = async () => {
@@ -267,6 +276,18 @@ const SmartBackgroundPanel: React.FC<SmartBackgroundPanelProps> = ({ onSettingsC
           </div>
         </div>
 
+        {/* Apply Button */}
+        {hasUnsavedChanges && (
+          <div className="pt-4 border-t border-slate-600">
+            <Button
+              onClick={applySettings}
+              className="w-full bg-emerald-600 hover:bg-emerald-700"
+            >
+              Apply Settings
+            </Button>
+          </div>
+        )}
+
         {/* Actions */}
         {settings.type !== 'default' && (
           <div className="flex gap-2 pt-4 border-t border-slate-600">
@@ -275,6 +296,7 @@ const SmartBackgroundPanel: React.FC<SmartBackgroundPanelProps> = ({ onSettingsC
                 BackgroundService.removeBackground();
                 updateSettings({ type: 'default' });
                 setCurrentImageName('');
+                setHasUnsavedChanges(false);
               }}
               variant="outline"
               size="sm"
