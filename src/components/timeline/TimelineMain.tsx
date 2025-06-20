@@ -37,9 +37,14 @@ const TimelineMain: React.FC<TimelineMainProps> = ({
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const newPosition = (x / rect.width) * totalDuration / (zoom / 100);
+    const timelineWidth = rect.width;
+    const scaledDuration = totalDuration / (zoom / 100);
+    const newPosition = (x / timelineWidth) * scaledDuration;
     onPlayheadMove(Math.max(0, Math.min(totalDuration, newPosition)));
   };
+
+  // Calculate the width based on zoom (zoom is percentage, so 100 = normal, 200 = 2x width)
+  const timelineWidth = Math.max(100, zoom);
 
   return (
     <div className="flex flex-col h-full">
@@ -58,33 +63,35 @@ const TimelineMain: React.FC<TimelineMainProps> = ({
             playheadPosition={playheadPosition}
           />
           
-          <div
-            ref={timelineRef}
-            className="flex-1 relative bg-gradient-to-r from-slate-800/80 via-indigo-800/40 to-slate-800/80 backdrop-blur-sm border-t border-indigo-600/30 cursor-pointer shadow-inner overflow-x-auto"
-            onClick={handleTimelineClick}
-            data-timeline-track
-            style={{ 
-              minWidth: `${Math.max(100, zoom)}%`,
-              width: `${Math.max(100, zoom)}%`
-            }}
-          >
-            <TimelineTrack
-              clips={clips}
-              totalDuration={totalDuration}
-              zoom={zoom}
-              onClipRemove={onClipRemove}
-              onClipReorder={() => {}}
-              draggedClip={draggedClip}
-              setDraggedClip={() => {}}
-              scrollOffset={0}
-            />
-            
-            <Playhead
-              position={playheadPosition}
-              totalDuration={totalDuration}
-              zoom={zoom}
-              onPositionChange={onPlayheadMove}
-            />
+          <div className="flex-1 overflow-x-auto overflow-y-hidden">
+            <div
+              ref={timelineRef}
+              className="relative bg-gradient-to-r from-slate-800/80 via-indigo-800/40 to-slate-800/80 backdrop-blur-sm border-t border-indigo-600/30 cursor-pointer shadow-inner h-full"
+              onClick={handleTimelineClick}
+              data-timeline-track
+              style={{ 
+                width: `${timelineWidth}%`,
+                minWidth: `${timelineWidth}%`
+              }}
+            >
+              <TimelineTrack
+                clips={clips}
+                totalDuration={totalDuration}
+                zoom={zoom}
+                onClipRemove={onClipRemove}
+                onClipReorder={() => {}}
+                draggedClip={draggedClip}
+                setDraggedClip={() => {}}
+                scrollOffset={0}
+              />
+              
+              <Playhead
+                position={playheadPosition}
+                totalDuration={totalDuration}
+                zoom={zoom}
+                onPositionChange={onPlayheadMove}
+              />
+            </div>
           </div>
         </div>
       </div>

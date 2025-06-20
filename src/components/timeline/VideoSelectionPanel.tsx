@@ -16,6 +16,7 @@ interface VideoSelectionPanelProps {
   onCancelProcessing: () => void;
   isGenerating: boolean;
   generationProgress: number;
+  onCompile: () => void;
 }
 
 const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
@@ -29,6 +30,7 @@ const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
   onCancelProcessing,
   isGenerating,
   generationProgress,
+  onCompile,
 }) => {
   const [config, setConfig] = useState({
     videoSelectionMode: 'all' as 'all' | 'specific',
@@ -78,6 +80,8 @@ const VideoSelectionPanel: React.FC<VideoSelectionPanelProps> = ({
             isGenerating={isGenerating}
             generationProgress={generationProgress}
             config={config}
+            onCompile={onCompile}
+            sourceVideos={sourceVideos}
           />
         </TabsContent>
       </Tabs>

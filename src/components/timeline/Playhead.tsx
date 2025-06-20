@@ -16,7 +16,8 @@ const Playhead: React.FC<PlayheadProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
 
-  const leftPercentage = (position / totalDuration) * 100 * zoom;
+  // Calculate position as percentage based on zoom
+  const leftPercentage = (position / totalDuration) * 100;
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -28,7 +29,9 @@ const Playhead: React.FC<PlayheadProps> = ({
       
       const rect = timelineElement.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      const newPosition = Math.max(0, Math.min(totalDuration, (x / rect.width) * (totalDuration / zoom)));
+      const timelineWidth = rect.width;
+      const percentage = Math.max(0, Math.min(100, (x / timelineWidth) * 100));
+      const newPosition = (percentage / 100) * totalDuration;
       onPositionChange(newPosition);
     };
 

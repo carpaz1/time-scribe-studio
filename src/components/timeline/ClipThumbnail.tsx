@@ -37,9 +37,12 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
     top: '10px',
   };
 
-  // Simplified thumbnail generation
+  // Enhanced thumbnail generation with better error handling
   useEffect(() => {
     let mounted = true;
+    let timeoutId: NodeJS.Timeout;
+    
+    console.log('ClipThumbnail: Starting thumbnail generation for clip:', clip.name);
     setIsLoading(true);
     setThumbnailError(false);
 
@@ -49,17 +52,32 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
         video.muted = true;
         video.playsInline = true;
         video.preload = 'metadata';
+        video.crossOrigin = 'anonymous';
         
         const objectUrl = URL.createObjectURL(clip.sourceFile);
-        video.src = objectUrl;
+        console.log('ClipThumbnail: Created object URL for:', clip.name);
 
         const cleanup = () => {
-          URL.revokeObjectURL(objectUrl);
-          video.remove();
+          try {
+            URL.revokeObjectURL(objectUrl);
+            video.remove();
+          } catch (e) {
+            console.warn('ClipThumbnail: Cleanup error:', e);
+          }
         };
 
+        // Set timeout for the entire process
+        timeoutId = setTimeout(() => {
+          console.warn('ClipThumbnail: Thumbnail generation timeout for:', clip.name);
+          if (mounted) {
+            setThumbnailError(true);
+            setIsLoading(false);
+          }
+          cleanup();
+        }, 10000);
+
         video.addEventListener('error', (e) => {
-          console.warn('Video load error for thumbnail:', clip.name, e);
+          console.error('ClipThumbnail: Video load error for:', clip.name, e);
           if (mounted) {
             setThumbnailError(true);
             setIsLoading(false);
@@ -67,21 +85,29 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
           cleanup();
         });
 
-        video.addEventListener('loadeddata', () => {
+        video.addEventListener('loadedmetadata', () => {
           if (!mounted) {
             cleanup();
             return;
           }
 
+          console.log('ClipThumbnail: Video metadata loaded for:', clip.name, 'duration:', video.duration);
+
           try {
             const canvas = canvasRef.current;
             if (!canvas) {
+              console.error('ClipThumbnail: Canvas not available');
+              setThumbnailError(true);
+              setIsLoading(false);
               cleanup();
               return;
             }
             
             const ctx = canvas.getContext('2d');
             if (!ctx) {
+              console.error('ClipThumbnail: Canvas context not available');
+              setThumbnailError(true);
+              setIsLoading(false);
               cleanup();
               return;
             }
@@ -89,9 +115,14 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             canvas.width = 120;
             canvas.height = 68;
             
-            // Seek to a safe position for thumbnail
-            const seekTime = Math.min(clip.startTime + 0.5, video.duration - 0.1);
-            video.currentTime = Math.max(0, seekTime);
+            // Seek to a safe position for thumbnail (middle of clip)
+            const seekTime = Math.min(
+              Math.max(clip.startTime + (clip.duration / 2), 0),
+              video.duration - 0.1
+            );
+            
+            console.log('ClipThumbnail: Seeking to time:', seekTime, 'for clip:', clip.name);
+            video.currentTime = seekTime;
             
             const onSeeked = () => {
               if (!mounted) {
@@ -100,12 +131,14 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
               }
 
               try {
+                console.log('ClipThumbnail: Drawing thumbnail for:', clip.name);
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
                 setThumbnailUrl(dataUrl);
                 setIsLoading(false);
+                console.log('ClipThumbnail: Thumbnail generated successfully for:', clip.name);
               } catch (drawError) {
-                console.warn('Canvas draw error:', clip.name, drawError);
+                console.error('ClipThumbnail: Canvas draw error for:', clip.name, drawError);
                 setThumbnailError(true);
                 setIsLoading(false);
               }
@@ -113,27 +146,28 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             };
 
             video.addEventListener('seeked', onSeeked, { once: true });
+            
+            // Fallback if seeked doesn't fire
+            setTimeout(() => {
+              if (mounted && isLoading && !thumbnailUrl) {
+                console.log('ClipThumbnail: Seeked event timeout, trying to draw anyway for:', clip.name);
+                onSeeked();
+              }
+            }, 3000);
+            
           } catch (error) {
-            console.warn('Thumbnail process error:', clip.name, error);
+            console.error('ClipThumbnail: Thumbnail process error for:', clip.name, error);
             setThumbnailError(true);
             setIsLoading(false);
             cleanup();
           }
         });
 
-        // Timeout fallback
-        setTimeout(() => {
-          if (mounted && isLoading) {
-            console.warn('Thumbnail timeout:', clip.name);
-            setThumbnailError(true);
-            setIsLoading(false);
-            cleanup();
-          }
-        }, 5000);
-
+        video.src = objectUrl;
         video.load();
+
       } catch (err) {
-        console.warn('Thumbnail setup error:', clip.name, err);
+        console.error('ClipThumbnail: Setup error for:', clip.name, err);
         if (mounted) {
           setThumbnailError(true);
           setIsLoading(false);
@@ -145,8 +179,11 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
 
     return () => {
       mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-  }, [clip.sourceFile, clip.name, clip.startTime]);
+  }, [clip.sourceFile, clip.name, clip.startTime, clip.duration]);
 
   return (
     <div
@@ -177,7 +214,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             alt={clip.name}
             className="w-full h-full object-cover"
             onError={() => {
-              console.warn('Thumbnail display error for:', clip.name);
+              console.warn('ClipThumbnail: Image display error for:', clip.name);
               setThumbnailError(true);
             }}
           />
