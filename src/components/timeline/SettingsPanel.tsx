@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,27 +22,34 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const handleGitPull = async (force = false) => {
+  const handleGitPull = async (strategy: 'normal' | 'stash' | 'force' = 'normal') => {
     setIsUpdating(true);
     setUpdateProgress(0);
     setGitError('');
     setUpdateStage('Starting git pull...');
     
     try {
-      const endpoint = force ? 'http://localhost:4000/git-pull-force' : 'http://localhost:4000/git-pull';
+      let endpoint = 'http://localhost:4000/git-pull';
+      
+      if (strategy === 'force') {
+        endpoint = 'http://localhost:4000/git-pull-force';
+      } else if (strategy === 'stash') {
+        endpoint = 'http://localhost:4000/git-pull-stash';
+      }
       
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ strategy }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
         if (result.error && result.error.includes('overwritten by merge')) {
-          setGitError('Git merge conflict detected. Local changes would be overwritten.');
+          setGitError('Git merge conflict detected. Choose an option below to resolve:');
           setUpdateStage('Merge conflict detected');
           return;
         }
@@ -242,25 +250,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
                   <CardContent className="p-4">
                     <div className="flex items-start gap-2">
                       <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <span className="text-sm text-red-300">{gitError}</span>
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => handleGitPull(true)}
-                            disabled={isUpdating}
-                            size="sm"
-                            className="bg-red-600 hover:bg-red-700 text-xs"
-                          >
-                            Force Update (Discard Local Changes)
-                          </Button>
-                          <Button
-                            onClick={() => setGitError('')}
-                            variant="outline"
-                            size="sm"
-                            className="text-xs border-slate-600"
-                          >
-                            Dismiss
-                          </Button>
+                        <div className="space-y-2">
+                          <div className="text-xs text-slate-300 mb-2">
+                            Choose how to handle the conflict:
+                          </div>
+                          <div className="grid grid-cols-1 gap-2">
+                            <Button
+                              onClick={() => handleGitPull('stash')}
+                              disabled={isUpdating}
+                              size="sm"
+                              className="bg-yellow-600 hover:bg-yellow-700 text-xs justify-start"
+                            >
+                              Stash & Pull (Recommended)
+                            </Button>
+                            <div className="text-xs text-slate-400 ml-2 mb-2">
+                              Temporarily saves your changes, pulls updates, then restores them
+                            </div>
+                            
+                            <Button
+                              onClick={() => handleGitPull('force')}
+                              disabled={isUpdating}
+                              size="sm"
+                              className="bg-red-600 hover:bg-red-700 text-xs justify-start"
+                            >
+                              Force Update (Discard Changes)
+                            </Button>
+                            <div className="text-xs text-slate-400 ml-2 mb-2">
+                              ⚠️ This will permanently delete your local changes
+                            </div>
+                            
+                            <Button
+                              onClick={() => setGitError('')}
+                              variant="outline"
+                              size="sm"
+                              className="text-xs border-slate-600"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -279,7 +308,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
               )}
               
               <Button
-                onClick={() => handleGitPull(false)}
+                onClick={() => handleGitPull('normal')}
                 disabled={isUpdating}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
