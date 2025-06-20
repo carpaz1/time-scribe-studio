@@ -1,15 +1,14 @@
+
 import React, { useState } from 'react';
-import { Settings, Film, Zap } from 'lucide-react';
+import { Film, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { VideoClip, SourceVideo } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
-import VideoUploader from './VideoUploader';
-import BulkDirectorySelector from './BulkDirectorySelector';
+import VideoSelectionPanel from './VideoSelectionPanel';
 import LibraryClipThumbnail from './LibraryClipThumbnail';
 import LibraryStats from './LibraryStats';
 import EmptyLibraryState from './EmptyLibraryState';
-import ClipGenerationPanel from './ClipGenerationPanel';
 import ClipLimitManager from './ClipLimitManager';
 import { VideoCompilerService } from '@/services/videoCompiler';
 
@@ -110,21 +109,19 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             name: `Random ${videoIndex}-${clipIndex}`,
             sourceFile: video.file,
             startTime,
-            duration: 1, // 1 second clips
+            duration: 1,
             thumbnail: video.thumbnail,
-            position: clipIndex, // Sequential positioning
+            position: clipIndex,
             originalVideoId: video.id,
           };
           randomClips.push(randomClip);
         }
       });
 
-      // Clear existing clips and add random ones
       onClipsUpdate(randomClips);
       
-      // Auto-compile the timeline
       const config = {
-        totalDuration: randomClips.length, // 1 second per clip
+        totalDuration: randomClips.length,
         clipOrder: randomClips.map(clip => clip.id),
         zoom: 1,
         playheadPosition: 0,
@@ -135,7 +132,6 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         description: `Generated ${randomClips.length} random clips and starting compilation...`,
       });
 
-      // Start compilation
       await VideoCompilerService.compileTimeline(
         randomClips,
         config,
@@ -219,22 +215,22 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             <Zap className="w-4 h-4 mr-2" />
             {isRandomEverything ? 'RANDOMIZING...' : 'FUCK IT RANDOM EVERYTHING.'}
           </Button>
-          <p className="text-xs text-slate-400 mt-1 text-center">
-            3 random 1-second clips from every video → instant compilation
-          </p>
         </div>
 
-        {/* Clip Generation Panel */}
-        <ClipGenerationPanel
-          sourceVideosCount={sourceVideos.length}
-          isGenerating={isGenerating}
-          generationProgress={generationProgress}
-          onGenerateClips={generateClips}
-          onRandomizeAll={onRandomizeAll}
-          clipsCount={clips.length}
-        />
+        {/* Organized Video Selection Panel */}
+        <div className="p-4">
+          <VideoSelectionPanel
+            sourceVideos={sourceVideos}
+            onVideoUpload={onVideoUpload}
+            onBulkUpload={onBulkUpload}
+            onGenerateClips={generateClips}
+            onRandomizeAll={onRandomizeAll}
+            isGenerating={isGenerating}
+            generationProgress={generationProgress}
+          />
+        </div>
 
-        {/* Add Clip Limit Manager */}
+        {/* Clip Limit Manager */}
         <div className="px-4">
           <ClipLimitManager
             clips={clips}
@@ -242,15 +238,6 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             onClearOldest={handleClearOldestClips}
             onClearUnused={handleClearUnusedClips}
           />
-        </div>
-
-        {/* Uploader Section */}
-        <div className="p-4 border-b border-slate-700/50 shrink-0">
-          <h3 className="text-sm font-semibold text-slate-200 mb-2">Add Media</h3>
-          <div className="flex space-x-2">
-            <VideoUploader onVideoUpload={onVideoUpload} />
-            <BulkDirectorySelector onBulkUpload={onBulkUpload} />
-          </div>
         </div>
 
         {/* Clip List */}

@@ -15,6 +15,7 @@ import SettingsPanel from './SettingsPanel';
 import EditorHeader from './EditorHeader';
 import TimelineInfoBar from './TimelineInfoBar';
 import { ZipDownloaderService } from '@/services/zipDownloader';
+import PlaybackControls from './PlaybackControls';
 
 interface TimelineEditorProps {
   initialClips?: VideoClip[];
@@ -386,6 +387,20 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
                 </div>
               </div>
             </ResizablePanel>
+
+            {/* Playback Controls - Between Video Player and Timeline */}
+            <PlaybackControls
+              isPlaying={isPlaying}
+              zoom={zoom}
+              timelineClipsLength={timelineClips.length}
+              totalDuration={totalDuration}
+              playheadPosition={playheadPosition}
+              onTogglePlayback={togglePlayback}
+              onZoomIn={handleZoomIn}
+              onZoomOut={handleZoomOut}
+              onReset={handleResetWithToast}
+              onClearTimeline={handleClearTimelineWithToast}
+            />
 
             <ResizableHandle withHandle />
 

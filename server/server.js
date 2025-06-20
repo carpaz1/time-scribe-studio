@@ -83,7 +83,7 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024 * 1024, // 10GB per file
     fieldSize: 10 * 1024 * 1024 * 1024, // 10GB for form fields
     fields: 100, // Allow many form fields
-    files: 50 // Allow up to 50 files
+    files: 200 // Increased from 50 to 200 files
   }
 });
 
