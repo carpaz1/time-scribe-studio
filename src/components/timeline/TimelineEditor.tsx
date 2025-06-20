@@ -1,8 +1,10 @@
+
 import React, { useState, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { toast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
+import { Button } from "@/components/ui/button";
 import { useProgressTracker } from '@/hooks/useProgressTracker';
 import { VideoClip, CompileRequest } from '@/types/timeline';
 import { VideoCompilerService } from '@/services/videoCompiler';
