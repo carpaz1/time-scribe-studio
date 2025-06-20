@@ -17,7 +17,6 @@ export class SimulationService {
     onProgress?.(30, 'Loading video files...');
     
     try {
-      // Create a canvas for video processing
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       canvas.width = 1920;
@@ -28,15 +27,14 @@ export class SimulationService {
       onProgress?.(40, 'Processing video frames...');
       await this.delay(800);
 
-      // Calculate proper frame rate and duration
-      const targetFrameRate = 30; // Standard frame rate
+      // Fix: Calculate proper timing based on actual clip durations
       const totalDuration = clips.reduce((sum, clip) => sum + clip.duration, 0);
-      const totalFrames = Math.round(totalDuration * targetFrameRate);
+      const targetFrameRate = 30;
       
-      console.log(`SimulationService: Creating ${totalFrames} frames for ${totalDuration}s video at ${targetFrameRate}fps`);
+      console.log(`SimulationService: Creating video for ${totalDuration}s at ${targetFrameRate}fps`);
 
-      // Create video using MediaRecorder for proper timing
-      const videoBlob = await this.createTimedVideo(canvas, clips, targetFrameRate, onProgress);
+      // Create video with proper timing
+      const videoBlob = await this.createProperlyTimedVideo(canvas, clips, totalDuration, targetFrameRate, onProgress);
 
       onProgress?.(95, 'Finalizing compilation...');
       await this.delay(300);
@@ -61,9 +59,10 @@ export class SimulationService {
     }
   }
 
-  private static async createTimedVideo(
+  private static async createProperlyTimedVideo(
     canvas: HTMLCanvasElement, 
     clips: VideoClip[], 
+    totalDuration: number,
     frameRate: number,
     onProgress?: ProgressCallback
   ): Promise<Blob> {
@@ -71,8 +70,8 @@ export class SimulationService {
       try {
         const stream = canvas.captureStream(frameRate);
         const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm;codecs=vp9',
-          videoBitsPerSecond: 5000000 // Higher bitrate for better quality
+          mimeType: 'video/webm;codecs=vp8',
+          videoBitsPerSecond: 2500000 // Reduced bitrate for better compatibility
         });
         
         const chunks: Blob[] = [];
@@ -92,58 +91,81 @@ export class SimulationService {
           reject(new Error('MediaRecorder error'));
         };
         
-        mediaRecorder.start();
+        mediaRecorder.start(100); // Record in 100ms chunks for better timing
         
-        // Process clips with proper timing
-        this.renderClipsSequentially(canvas, clips, frameRate, onProgress).then(() => {
+        // Record for the exact duration needed
+        this.renderClipsWithCorrectTiming(canvas, clips, totalDuration, frameRate, onProgress).then(() => {
           setTimeout(() => {
             mediaRecorder.stop();
             stream.getTracks().forEach(track => track.stop());
-          }, 1000); // Give time for final frames
+          }, 500);
         }).catch(reject);
         
       } catch (error) {
         console.warn('MediaRecorder not available, creating fallback');
-        resolve(new Blob([new Uint8Array(10 * 1024 * 1024)], { type: 'video/webm' }));
+        resolve(new Blob([new Uint8Array(5 * 1024 * 1024)], { type: 'video/webm' }));
       }
     });
   }
 
-  private static async renderClipsSequentially(
+  private static async renderClipsWithCorrectTiming(
     canvas: HTMLCanvasElement, 
     clips: VideoClip[], 
+    totalDuration: number,
     frameRate: number,
     onProgress?: ProgressCallback
   ): Promise<void> {
     const ctx = canvas.getContext('2d')!;
+    const frameDelay = 1000 / frameRate; // Proper frame timing
+    const totalFrames = Math.round(totalDuration * frameRate);
     
-    for (let i = 0; i < clips.length; i++) {
-      const clip = clips[i];
-      const clipProgress = 40 + (i / clips.length) * 30;
-      onProgress?.(clipProgress, `Rendering clip ${i + 1}/${clips.length}: ${clip.name}`);
+    console.log(`SimulationService: Rendering ${totalFrames} frames over ${totalDuration}s`);
+    
+    for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+      const currentTime = frameIndex / frameRate;
       
-      // Render frames for this clip duration
-      const framesInClip = Math.round(clip.duration * frameRate);
+      // Find which clip should be playing at this time
+      let currentClip = null;
+      let clipStartTime = 0;
       
-      for (let frame = 0; frame < framesInClip; frame++) {
-        // Clear canvas
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (const clip of clips) {
+        if (currentTime >= clipStartTime && currentTime < clipStartTime + clip.duration) {
+          currentClip = clip;
+          break;
+        }
+        clipStartTime += clip.duration;
+      }
+      
+      // Clear canvas
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      if (currentClip) {
+        const relativeTime = currentTime - clipStartTime;
         
-        // Draw clip info
+        // Draw clip content
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(100, 100, canvas.width - 200, canvas.height - 200);
+        
         ctx.fillStyle = 'white';
         ctx.font = '48px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`${clip.name}`, canvas.width / 2, canvas.height / 2 - 50);
+        ctx.fillText(currentClip.name, canvas.width / 2, canvas.height / 2 - 50);
         
         ctx.font = '32px Arial';
         ctx.fillStyle = '#94a3b8';
-        ctx.fillText(`Clip ${i + 1} of ${clips.length}`, canvas.width / 2, canvas.height / 2 + 20);
-        ctx.fillText(`Frame ${frame + 1}/${framesInClip}`, canvas.width / 2, canvas.height / 2 + 60);
-        
-        // Wait for proper frame timing
-        await this.delay(1000 / frameRate);
+        ctx.fillText(`Time: ${relativeTime.toFixed(1)}s`, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText(`Frame: ${frameIndex}/${totalFrames}`, canvas.width / 2, canvas.height / 2 + 60);
       }
+      
+      // Update progress
+      if (frameIndex % Math.round(frameRate) === 0) {
+        const progress = 40 + (frameIndex / totalFrames) * 30;
+        onProgress?.(progress, `Rendering frame ${frameIndex}/${totalFrames}`);
+      }
+      
+      // Wait for proper frame timing
+      await this.delay(frameDelay);
     }
   }
 

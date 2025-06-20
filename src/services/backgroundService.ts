@@ -1,27 +1,35 @@
+
 import { removeBackground, loadImage, enhanceImageForTheme } from '@/services/imageProcessor';
 
 export interface BackgroundSettings {
-  type: 'default' | 'single' | 'folder';
+  type: 'default' | 'single' | 'folder' | 'random';
   imagePath?: string;
   folderPath?: string;
   opacity: number;
   blur: number;
   aiEnhanced: boolean;
   overlayColor: string;
-  imagePosition: 'center' | 'top-right' | 'bottom-left' | 'pattern';
+  imagePosition: 'center' | 'top-right' | 'bottom-left' | 'pattern' | 'overlay';
   imageScale: number;
+  autoChangeInterval?: number; // minutes
+  patternRepeat: 'repeat' | 'space' | 'round';
+  overlayEverywhere: boolean;
 }
 
 export class BackgroundService {
   private static currentBackground: string | null = null;
+  private static autoChangeTimer: NodeJS.Timeout | null = null;
+  private static folderImages: File[] = [];
   private static settings: BackgroundSettings = {
     type: 'default',
-    opacity: 0.8,
-    blur: 0.3,
+    opacity: 0.7,
+    blur: 0.2,
     aiEnhanced: false,
     overlayColor: 'slate-900',
-    imagePosition: 'center',
-    imageScale: 1.0
+    imagePosition: 'pattern',
+    imageScale: 1.0,
+    patternRepeat: 'repeat',
+    overlayEverywhere: true
   };
 
   static async selectSingleImage(): Promise<File | null> {
@@ -46,6 +54,9 @@ export class BackgroundService {
       input.webkitdirectory = true;
       input.onchange = (e) => {
         const files = (e.target as HTMLInputElement).files;
+        if (files) {
+          this.folderImages = Array.from(files).filter(f => f.type.startsWith('image/'));
+        }
         resolve(files);
       };
       input.click();
@@ -54,96 +65,63 @@ export class BackgroundService {
 
   static async processImageForBackground(file: File, settings: Partial<BackgroundSettings> = {}): Promise<string> {
     try {
-      console.log('BackgroundService: Processing image for background, AI Enhanced:', settings.aiEnhanced);
+      console.log('BackgroundService: Processing image, AI Enhanced:', settings.aiEnhanced);
       
       if (settings.aiEnhanced) {
-        console.log('BackgroundService: Applying AI enhancement to image');
         const enhancedBlob = await enhanceImageForTheme(file);
-        const enhancedFile = new File([enhancedBlob], file.name, { type: enhancedBlob.type });
-        file = enhancedFile;
+        file = new File([enhancedBlob], file.name, { type: enhancedBlob.type });
       }
 
       const img = await loadImage(file);
       
-      // Create canvas for AI-enhanced positioning
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas context not available');
-
-      // Set canvas to screen dimensions
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-
-      // Apply AI positioning logic
-      if (settings.aiEnhanced && settings.imagePosition) {
-        this.applyAIPositioning(ctx, img, canvas, settings);
-      } else {
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        ctx.drawImage(img, 0, 0);
+      if (settings.aiEnhanced && (settings.imagePosition === 'pattern' || settings.overlayEverywhere)) {
+        return this.createPatternOverlay(img, settings);
       }
 
-      return canvas.toDataURL('image/jpeg', 0.9);
+      return URL.createObjectURL(file);
     } catch (error) {
       console.error('Error processing background image:', error);
       return URL.createObjectURL(file);
     }
   }
 
-  private static applyAIPositioning(
-    ctx: CanvasRenderingContext2D, 
-    img: HTMLImageElement, 
-    canvas: HTMLCanvasElement, 
-    settings: Partial<BackgroundSettings>
-  ) {
-    const scale = settings.imageScale || 1.0;
-    const position = settings.imagePosition || 'center';
+  private static createPatternOverlay(img: HTMLImageElement, settings: Partial<BackgroundSettings>): string {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    const scale = settings.imageScale || 0.3;
+    const patternSize = Math.min(img.naturalWidth, img.naturalHeight) * scale;
     
-    // Create subtle background pattern
-    ctx.fillStyle = '#0f172a';
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Create subtle background
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Create pattern overlay
+    const spacing = patternSize * 1.5;
+    const cols = Math.ceil(canvas.width / spacing);
+    const rows = Math.ceil(canvas.height / spacing);
+
+    ctx.globalAlpha = 0.15; // Very subtle
     
-    const scaledWidth = img.naturalWidth * scale * 0.4; // Make images smaller for better integration
-    const scaledHeight = img.naturalHeight * scale * 0.4;
-    
-    let x, y;
-    
-    switch (position) {
-      case 'top-right':
-        x = canvas.width - scaledWidth - 50;
-        y = 50;
-        break;
-      case 'bottom-left':
-        x = 50;
-        y = canvas.height - scaledHeight - 50;
-        break;
-      case 'pattern':
-        // Create a tiled pattern
-        for (let i = 0; i < 3; i++) {
-          for (let j = 0; j < 2; j++) {
-            const patternX = (canvas.width / 3) * i + 20;
-            const patternY = (canvas.height / 2) * j + 20;
-            ctx.globalAlpha = 0.3;
-            ctx.drawImage(img, patternX, patternY, scaledWidth * 0.6, scaledHeight * 0.6);
-          }
-        }
-        ctx.globalAlpha = 1.0;
-        return;
-      default: // center
-        x = (canvas.width - scaledWidth) / 2;
-        y = (canvas.height - scaledHeight) / 2;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = col * spacing + (row % 2) * spacing * 0.5; // Offset every other row
+        const y = row * spacing;
+        
+        ctx.save();
+        ctx.translate(x + patternSize / 2, y + patternSize / 2);
+        ctx.rotate((Math.PI / 180) * (row * col * 15)); // Slight rotation variation
+        ctx.drawImage(img, -patternSize / 2, -patternSize / 2, patternSize, patternSize);
+        ctx.restore();
+      }
     }
-    
-    // Add subtle shadow for depth
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-    ctx.shadowBlur = 20;
-    ctx.shadowOffsetX = 10;
-    ctx.shadowOffsetY = 10;
-    
-    ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
-    
-    // Reset shadow
-    ctx.shadowColor = 'transparent';
+
+    ctx.globalAlpha = 1.0;
+    return canvas.toDataURL('image/png', 0.8);
   }
 
   static applyBackground(imageUrl: string, settings: BackgroundSettings) {
@@ -152,108 +130,117 @@ export class BackgroundService {
 
     this.removeBackground();
 
-    document.documentElement.classList.add('has-custom-background');
-    document.body.classList.add('has-custom-background');
-
     const style = document.createElement('style');
     style.id = 'custom-background-style';
 
-    const blurValue = settings.blur || 0.3;
-    const opacity = settings.opacity || 0.8;
+    const blurValue = settings.blur || 0.2;
+    const opacity = settings.opacity || 0.7;
 
-    style.textContent = `
-      html.has-custom-background,
-      html.has-custom-background body,
-      html.has-custom-background body > div,
-      html.has-custom-background #root {
-        background: transparent !important;
-        position: relative;
-      }
-      
-      html.has-custom-background::before {
-        content: '';
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        background-image: url('${imageUrl}') !important;
-        background-size: ${settings.aiEnhanced ? 'contain' : 'cover'} !important;
-        background-position: center !important;
-        background-repeat: ${settings.imagePosition === 'pattern' ? 'repeat' : 'no-repeat'} !important;
-        background-attachment: fixed !important;
-        opacity: ${opacity} !important;
-        filter: blur(${blurValue}px) brightness(1.1) contrast(1.1) !important;
-        z-index: -1000 !important;
-        pointer-events: none !important;
-      }
-      
-      html.has-custom-background::after {
-        content: '';
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        background: linear-gradient(
-          135deg, 
-          rgba(15, 23, 42, 0.2) 0%, 
-          rgba(30, 41, 59, 0.1) 25%,
-          rgba(51, 65, 85, 0.05) 50%,
-          rgba(30, 41, 59, 0.1) 75%,
-          rgba(15, 23, 42, 0.2) 100%
-        ) !important;
-        backdrop-filter: blur(0.5px) !important;
-        z-index: -999 !important;
-        pointer-events: none !important;
-      }
-
-      .has-custom-background .bg-slate-900,
-      .has-custom-background .bg-slate-800,
-      .has-custom-background .bg-slate-700,
-      .has-custom-background .bg-gradient-to-br,
-      .has-custom-background [class*="bg-slate"],
-      .has-custom-background [class*="bg-gradient"] {
-        background: rgba(15, 23, 42, 0.05) !important;
-        backdrop-filter: blur(1px) !important;
-      }
-
-      .has-custom-background > *,
-      .has-custom-background div,
-      .has-custom-background section {
-        position: relative;
-        z-index: 1;
-      }
-    `;
+    if (settings.overlayEverywhere) {
+      // Apply overlay to everything including video player
+      style.textContent = `
+        html, body, #root {
+          position: relative;
+        }
+        
+        html::before {
+          content: '';
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          background-image: url('${imageUrl}') !important;
+          background-size: ${settings.imagePosition === 'pattern' ? 'auto' : 'cover'} !important;
+          background-position: center !important;
+          background-repeat: ${settings.imagePosition === 'pattern' ? 'repeat' : 'no-repeat'} !important;
+          opacity: ${opacity} !important;
+          filter: blur(${blurValue}px) !important;
+          z-index: -2000 !important;
+          pointer-events: none !important;
+        }
+        
+        /* Video player overlay */
+        .video-container::before {
+          content: '';
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          background-image: url('${imageUrl}') !important;
+          background-size: ${settings.imagePosition === 'pattern' ? 'auto' : 'cover'} !important;
+          background-repeat: ${settings.imagePosition === 'pattern' ? 'repeat' : 'no-repeat'} !important;
+          opacity: 0.1 !important;
+          filter: blur(1px) !important;
+          z-index: 1 !important;
+          pointer-events: none !important;
+        }
+      `;
+    } else {
+      style.textContent = `
+        html::before {
+          content: '';
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          background-image: url('${imageUrl}') !important;
+          background-size: cover !important;
+          background-position: center !important;
+          opacity: ${opacity} !important;
+          filter: blur(${blurValue}px) !important;
+          z-index: -1000 !important;
+          pointer-events: none !important;
+        }
+      `;
+    }
 
     document.head.appendChild(style);
-    console.log('Background applied with AI positioning:', settings);
+    this.startAutoChange();
+    console.log('Background applied with overlay everywhere:', settings.overlayEverywhere);
+  }
+
+  static startAutoChange() {
+    if (this.autoChangeTimer) {
+      clearInterval(this.autoChangeTimer);
+    }
+
+    if (this.settings.autoChangeInterval && this.settings.type === 'folder' && this.folderImages.length > 1) {
+      this.autoChangeTimer = setInterval(async () => {
+        const randomFile = this.randomFromFolder();
+        if (randomFile) {
+          const processedUrl = await this.processImageForBackground(randomFile, this.settings);
+          this.applyBackground(processedUrl, this.settings);
+        }
+      }, this.settings.autoChangeInterval * 60 * 1000);
+    }
   }
 
   static removeBackground() {
     this.currentBackground = null;
-    document.body.classList.remove('has-custom-background');
-    document.documentElement.classList.remove('has-custom-background');
+    if (this.autoChangeTimer) {
+      clearInterval(this.autoChangeTimer);
+      this.autoChangeTimer = null;
+    }
     
     const existing = document.getElementById('custom-background-style');
     if (existing) existing.remove();
-
-    const patternOverlay = document.querySelector('.pattern-overlay');
-    if (patternOverlay) patternOverlay.remove();
   }
 
   static getSettings(): BackgroundSettings {
     return { ...this.settings };
   }
 
-  static randomFromFolder(files: FileList): File | null {
-    if (files.length === 0) return null;
-    const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-    if (imageFiles.length === 0) return null;
-    return imageFiles[Math.floor(Math.random() * imageFiles.length)];
+  static randomFromFolder(): File | null {
+    if (this.folderImages.length === 0) return null;
+    return this.folderImages[Math.floor(Math.random() * this.folderImages.length)];
+  }
+
+  static updateSettings(newSettings: Partial<BackgroundSettings>) {
+    this.settings = { ...this.settings, ...newSettings };
   }
 }

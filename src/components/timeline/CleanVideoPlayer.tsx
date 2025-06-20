@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { VideoClip } from '@/types/timeline';
 
@@ -130,7 +129,7 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
   }, [videoSrc]);
 
   return (
-    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden rounded-lg">
+    <div className="w-full h-full bg-black relative video-container overflow-hidden">
       {error ? (
         <div className="text-red-400 text-center">
           <div className="text-4xl mb-2">⚠️</div>
