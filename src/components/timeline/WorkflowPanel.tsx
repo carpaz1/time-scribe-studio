@@ -54,6 +54,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
     onQuickRandomize(selectedDuration, includePictures);
   };
 
+  const handlePicturesToggle = (checked: boolean | "indeterminate") => {
+    setIncludePictures(checked === true);
+  };
+
   return (
     <Card className="bg-slate-800/50 border-slate-700">
       <CardHeader className="pb-3">
@@ -127,7 +131,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               <Checkbox 
                 id="include-pictures" 
                 checked={includePictures}
-                onCheckedChange={setIncludePictures}
+                onCheckedChange={handlePicturesToggle}
               />
               <label 
                 htmlFor="include-pictures" 
