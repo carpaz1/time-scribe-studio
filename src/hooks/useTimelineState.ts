@@ -8,13 +8,13 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   const [timelineClips, setTimelineClips] = useState<VideoClip[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadPosition, setPlayheadPosition] = useState(0);
-  const [zoom, setZoom] = useState(1); // Fixed: Changed from 100 to 1 (1x zoom)
+  const [zoom, setZoom] = useState(1);
   const [totalDuration, setTotalDuration] = useState(60);
   const [draggedClip, setDraggedClip] = useState<VideoClip | null>(null);
   const [isCompiling, setIsCompiling] = useState(false);
   const [timelineScrollOffset, setTimelineScrollOffset] = useState(0);
 
-  // Stable memoized calculation
+  // Stable duration calculation
   const calculatedDuration = useMemo(() => {
     if (timelineClips.length > 0) {
       const maxEnd = Math.max(...timelineClips.map(clip => clip.position + clip.duration));
@@ -23,16 +23,14 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     return 60;
   }, [timelineClips]);
 
-  // Optimized duration update to prevent flashing
+  // Update duration when needed
   useEffect(() => {
     if (Math.abs(calculatedDuration - totalDuration) > 1) {
-      console.log('useTimelineState: Updating total duration from', totalDuration, 'to', calculatedDuration);
       setTotalDuration(calculatedDuration);
     }
   }, [calculatedDuration, totalDuration]);
 
   const handleClipAdd = useCallback((clip: VideoClip) => {
-    console.log('useTimelineState: Adding clip to timeline:', clip.name);
     const newClip = {
       ...clip,
       position: timelineClips.length > 0 
@@ -43,12 +41,10 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   }, [timelineClips]);
 
   const handleClipRemove = useCallback((clipId: string) => {
-    console.log('useTimelineState: Removing clip from timeline:', clipId);
     setTimelineClips(prev => prev.filter(clip => clip.id !== clipId));
   }, []);
 
   const handleClipReorder = useCallback((draggedClipId: string, targetPosition: number) => {
-    console.log('useTimelineState: Reordering clip:', draggedClipId, 'to position:', targetPosition);
     setTimelineClips(prev => {
       const updated = prev.map(clip => 
         clip.id === draggedClipId 
@@ -60,21 +56,18 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   }, []);
 
   const handleReset = useCallback(() => {
-    console.log('useTimelineState: Resetting timeline');
     setTimelineClips([]);
     setPlayheadPosition(0);
     setIsPlaying(false);
-    setZoom(1); // Reset to 1x zoom
+    setZoom(1);
   }, []);
 
   const handleClearTimeline = useCallback(() => {
-    console.log('useTimelineState: Clearing timeline');
     setTimelineClips([]);
     setPlayheadPosition(0);
     setIsPlaying(false);
   }, []);
 
-  // Enhanced batch processing for speed
   const handleRandomizeAll = useCallback(() => {
     if (clips.length === 0) {
       throw new Error('No clips available');
@@ -87,12 +80,9 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
       throw new Error('All clips are already on the timeline');
     }
 
-    console.log('useTimelineState: GPU-accelerated batch adding', availableClips.length, 'clips');
-    
-    // Process in larger batches for GPU efficiency
     const shuffledClips = [...availableClips]
       .sort(() => Math.random() - 0.5)
-      .slice(0, Math.min(availableClips.length, 200)); // Increased batch size
+      .slice(0, Math.min(availableClips.length, 50));
 
     const currentEndPosition = timelineClips.length > 0 
       ? Math.max(...timelineClips.map(c => c.position + c.duration))
@@ -103,9 +93,21 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
       position: currentEndPosition + (index > 0 ? shuffledClips.slice(0, index).reduce((acc, c) => acc + c.duration, 0) : 0)
     }));
 
-    // Batch update for better performance
     setTimelineClips(prev => [...prev, ...newTimelineClips]);
   }, [clips, timelineClips]);
+
+  // New method for AI editing
+  const handleAIEdit = useCallback((newClips: VideoClip[]) => {
+    // Recalculate positions to maintain timeline flow
+    let currentPosition = 0;
+    const repositionedClips = newClips.map(clip => {
+      const newClip = { ...clip, position: currentPosition };
+      currentPosition += clip.duration;
+      return newClip;
+    });
+    
+    setTimelineClips(repositionedClips);
+  }, []);
 
   return {
     // State
@@ -138,5 +140,6 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     handleReset,
     handleClearTimeline,
     handleRandomizeAll,
+    handleAIEdit,
   };
 };
