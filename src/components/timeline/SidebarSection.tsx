@@ -19,7 +19,7 @@ interface SidebarSectionProps {
 
 const SidebarSection: React.FC<SidebarSectionProps> = (props) => {
   return (
-    <div className="h-full bg-gradient-to-b from-slate-800/90 via-indigo-900/40 to-slate-800/90 backdrop-blur-sm border-r border-indigo-700/30 shadow-xl">
+    <div className="w-80 min-w-80 h-full bg-gradient-to-b from-slate-800/90 via-indigo-900/40 to-slate-800/90 backdrop-blur-sm border-r border-indigo-700/30 shadow-xl">
       <ClipLibrary {...props} />
     </div>
   );

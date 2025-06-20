@@ -1,5 +1,5 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { VideoClip } from '@/types/timeline';
 import TimelineTrack from './TimelineTrack';
 import Playhead from './Playhead';
@@ -17,6 +17,7 @@ interface TimelineMainProps {
   onClipDragEnd: () => void;
   onClipRemove: (id: string) => void;
   onPlayheadMove: (position: number) => void;
+  onZoomChange: (zoom: number) => void;
 }
 
 const TimelineMain: React.FC<TimelineMainProps> = ({
@@ -30,8 +31,27 @@ const TimelineMain: React.FC<TimelineMainProps> = ({
   onClipDragEnd,
   onClipRemove,
   onPlayheadMove,
+  onZoomChange,
 }) => {
   const timelineRef = useRef<HTMLDivElement>(null);
+
+  // Add zoom functionality with shift + scroll
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (e.shiftKey) {
+        e.preventDefault();
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.max(50, Math.min(500, zoom * zoomFactor));
+        onZoomChange(newZoom);
+      }
+    };
+
+    const timeline = timelineRef.current;
+    if (timeline) {
+      timeline.addEventListener('wheel', handleWheel, { passive: false });
+      return () => timeline.removeEventListener('wheel', handleWheel);
+    }
+  }, [zoom, onZoomChange]);
 
   const handleTimelineClick = (e: React.MouseEvent) => {
     if (!timelineRef.current) return;

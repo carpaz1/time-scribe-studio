@@ -28,6 +28,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
   const [thumbnailError, setThumbnailError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -37,7 +38,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
     top: '10px',
   };
 
-  // Enhanced thumbnail generation with better error handling
+  // Enhanced thumbnail generation with better error handling and fallbacks
   useEffect(() => {
     let mounted = true;
     let timeoutId: NodeJS.Timeout;
@@ -49,6 +50,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
     const generateThumbnail = async () => {
       try {
         const video = document.createElement('video');
+        videoRef.current = video;
         video.muted = true;
         video.playsInline = true;
         video.preload = 'metadata';
@@ -60,7 +62,10 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
         const cleanup = () => {
           try {
             URL.revokeObjectURL(objectUrl);
-            video.remove();
+            if (videoRef.current) {
+              videoRef.current.src = '';
+              videoRef.current = null;
+            }
           } catch (e) {
             console.warn('ClipThumbnail: Cleanup error:', e);
           }
@@ -72,15 +77,16 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
           if (mounted) {
             setThumbnailError(true);
             setIsLoading(false);
+            // Generate fallback thumbnail
+            generateFallbackThumbnail();
           }
           cleanup();
-        }, 10000);
+        }, 8000);
 
         video.addEventListener('error', (e) => {
           console.error('ClipThumbnail: Video load error for:', clip.name, e);
           if (mounted) {
-            setThumbnailError(true);
-            setIsLoading(false);
+            generateFallbackThumbnail();
           }
           cleanup();
         });
@@ -97,8 +103,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             const canvas = canvasRef.current;
             if (!canvas) {
               console.error('ClipThumbnail: Canvas not available');
-              setThumbnailError(true);
-              setIsLoading(false);
+              generateFallbackThumbnail();
               cleanup();
               return;
             }
@@ -106,8 +111,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             const ctx = canvas.getContext('2d');
             if (!ctx) {
               console.error('ClipThumbnail: Canvas context not available');
-              setThumbnailError(true);
-              setIsLoading(false);
+              generateFallbackThumbnail();
               cleanup();
               return;
             }
@@ -115,14 +119,13 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             canvas.width = 120;
             canvas.height = 68;
             
-            // Seek to a safe position for thumbnail (middle of clip)
+            // Seek to a safe position for thumbnail (middle of clip or 1 second)
             const seekTime = Math.min(
-              Math.max(clip.startTime + (clip.duration / 2), 0),
-              video.duration - 0.1
+              Math.max(clip.startTime + (clip.duration / 2), 1),
+              video.duration - 0.5
             );
             
             console.log('ClipThumbnail: Seeking to time:', seekTime, 'for clip:', clip.name);
-            video.currentTime = seekTime;
             
             const onSeeked = () => {
               if (!mounted) {
@@ -136,29 +139,29 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
                 setThumbnailUrl(dataUrl);
                 setIsLoading(false);
+                setThumbnailError(false);
                 console.log('ClipThumbnail: Thumbnail generated successfully for:', clip.name);
               } catch (drawError) {
                 console.error('ClipThumbnail: Canvas draw error for:', clip.name, drawError);
-                setThumbnailError(true);
-                setIsLoading(false);
+                generateFallbackThumbnail();
               }
               cleanup();
             };
 
             video.addEventListener('seeked', onSeeked, { once: true });
+            video.currentTime = seekTime;
             
-            // Fallback if seeked doesn't fire
+            // Fallback if seeked doesn't fire within 2 seconds
             setTimeout(() => {
-              if (mounted && isLoading && !thumbnailUrl) {
+              if (mounted && isLoading && !thumbnailUrl && !thumbnailError) {
                 console.log('ClipThumbnail: Seeked event timeout, trying to draw anyway for:', clip.name);
                 onSeeked();
               }
-            }, 3000);
+            }, 2000);
             
           } catch (error) {
             console.error('ClipThumbnail: Thumbnail process error for:', clip.name, error);
-            setThumbnailError(true);
-            setIsLoading(false);
+            generateFallbackThumbnail();
             cleanup();
           }
         });
@@ -169,9 +172,46 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
       } catch (err) {
         console.error('ClipThumbnail: Setup error for:', clip.name, err);
         if (mounted) {
-          setThumbnailError(true);
-          setIsLoading(false);
+          generateFallbackThumbnail();
         }
+      }
+    };
+
+    const generateFallbackThumbnail = () => {
+      try {
+        const canvas = canvasRef.current;
+        if (canvas && mounted) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            canvas.width = 120;
+            canvas.height = 68;
+            
+            // Create a gradient background
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#3B82F6');
+            gradient.addColorStop(1, '#1E40AF');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add text
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('VIDEO', canvas.width / 2, canvas.height / 2 - 5);
+            ctx.font = '8px Arial';
+            ctx.fillText(clip.duration.toFixed(1) + 's', canvas.width / 2, canvas.height / 2 + 8);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            setThumbnailUrl(dataUrl);
+            setIsLoading(false);
+            setThumbnailError(false);
+          }
+        }
+      } catch (error) {
+        console.error('ClipThumbnail: Fallback thumbnail generation failed:', error);
+        setThumbnailError(true);
+        setIsLoading(false);
       }
     };
 
@@ -183,7 +223,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
         clearTimeout(timeoutId);
       }
     };
-  }, [clip.sourceFile, clip.name, clip.startTime, clip.duration]);
+  }, [clip.sourceFile, clip.name, clip.startTime, clip.duration, isLoading, thumbnailUrl, thumbnailError]);
 
   return (
     <div
@@ -204,11 +244,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
           <div className="w-full h-full bg-gradient-to-r from-slate-600 to-slate-700 flex items-center justify-center">
             <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
           </div>
-        ) : thumbnailError || !thumbnailUrl ? (
-          <div className="w-full h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
-            <FileVideo className="w-6 h-6 text-white" />
-          </div>
-        ) : (
+        ) : thumbnailUrl ? (
           <img 
             src={thumbnailUrl} 
             alt={clip.name}
@@ -218,6 +254,10 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
               setThumbnailError(true);
             }}
           />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
+            <FileVideo className="w-6 h-6 text-white" />
+          </div>
         )}
 
         {/* Overlay with clip info */}

@@ -51,15 +51,15 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
   return (
     <Card className="bg-slate-800/50 border-slate-700">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg text-slate-200">Video Workflow</CardTitle>
+        <CardTitle className="text-lg text-slate-200 whitespace-nowrap">Video Workflow</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Step 1: Upload */}
         <div className="space-y-3">
-          <Label className="text-slate-300 text-sm font-medium">
+          <Label className="text-slate-300 text-sm font-medium block">
             1. Upload Videos ({sourceVideos.length} loaded)
           </Label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <div>
               <input
                 type="file"
@@ -72,11 +72,11 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               <Button
                 asChild
                 variant="outline"
-                className="w-full border-slate-600 text-slate-300"
+                className="w-full border-slate-600 text-slate-300 text-xs px-2 py-1 h-8"
                 disabled={isProcessing}
               >
                 <label htmlFor="video-files" className="cursor-pointer">
-                  <Upload className="w-4 h-4 mr-2" />
+                  <Upload className="w-3 h-3 mr-1" />
                   Select Files
                 </label>
               </Button>
@@ -97,11 +97,11 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               <Button
                 asChild
                 variant="outline"
-                className="w-full border-slate-600 text-slate-300"
+                className="w-full border-slate-600 text-slate-300 text-xs px-2 py-1 h-8"
                 disabled={isProcessing}
               >
                 <label htmlFor="video-directory" className="cursor-pointer">
-                  <Upload className="w-4 h-4 mr-2" />
+                  <Upload className="w-3 h-3 mr-1" />
                   Select Folder
                 </label>
               </Button>
@@ -112,13 +112,13 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
         {/* Step 2: Choose Workflow (only show if videos uploaded) */}
         {sourceVideos.length > 0 && (
           <div className="space-y-3">
-            <Label className="text-slate-300 text-sm font-medium">
+            <Label className="text-slate-300 text-sm font-medium block">
               2. Choose Workflow
             </Label>
             <Tabs value={activeWorkflow} onValueChange={(value) => setActiveWorkflow(value as 'quick' | 'custom')}>
-              <TabsList className="grid w-full grid-cols-2 bg-slate-700/50">
-                <TabsTrigger value="quick">Quick Random</TabsTrigger>
-                <TabsTrigger value="custom">Custom</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2 bg-slate-700/50 h-8">
+                <TabsTrigger value="quick" className="text-xs">Quick Random</TabsTrigger>
+                <TabsTrigger value="custom" className="text-xs">Custom</TabsTrigger>
               </TabsList>
               
               <TabsContent value="quick" className="space-y-3 mt-3">
@@ -127,35 +127,35 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                   onValueChange={(value) => setSelectedDuration(Number(value) as 1 | 2 | 5)}
                   disabled={isProcessing}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">1 minute (60 clips)</SelectItem>
-                    <SelectItem value="2">2 minutes (120 clips)</SelectItem>
-                    <SelectItem value="5">5 minutes (300 clips)</SelectItem>
+                    <SelectItem value="1">1 min (60 clips)</SelectItem>
+                    <SelectItem value="2">2 min (120 clips)</SelectItem>
+                    <SelectItem value="5">5 min (300 clips)</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
                   onClick={() => onQuickRandomize(selectedDuration)}
                   disabled={isProcessing}
-                  className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                  className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-xs px-2 py-1 h-8"
                 >
-                  <Zap className="w-4 h-4 mr-2" />
-                  {isProcessing ? 'Processing...' : `Generate ${selectedDuration}min Video`}
+                  <Zap className="w-3 h-3 mr-1" />
+                  {isProcessing ? 'Processing...' : `Generate ${selectedDuration}min`}
                 </Button>
               </TabsContent>
               
               <TabsContent value="custom" className="space-y-3 mt-3">
-                <div className="text-sm text-slate-400">
-                  Custom workflow allows manual clip selection and timeline editing
+                <div className="text-xs text-slate-400">
+                  Custom workflow allows manual clip selection
                 </div>
                 <Button
                   onClick={onCompile}
                   disabled={isProcessing}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs px-2 py-1 h-8"
                 >
-                  <Play className="w-4 h-4 mr-2" />
+                  <Play className="w-3 h-3 mr-1" />
                   Compile Timeline
                 </Button>
               </TabsContent>
@@ -166,16 +166,16 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
         {/* Processing Status */}
         {isProcessing && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-sm text-slate-300">
-              <span>{processingStage}</span>
-              <span>{Math.round(processingProgress)}%</span>
+            <div className="flex items-center justify-between text-xs text-slate-300">
+              <span className="truncate pr-2 flex-1">{processingStage}</span>
+              <span className="whitespace-nowrap">{Math.round(processingProgress)}%</span>
             </div>
             <Progress value={processingProgress} className="h-2 bg-slate-600" />
             <Button
               onClick={onCancelProcessing}
               variant="destructive"
               size="sm"
-              className="w-full"
+              className="w-full text-xs h-6"
             >
               Cancel
             </Button>
