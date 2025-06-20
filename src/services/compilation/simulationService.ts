@@ -1,4 +1,3 @@
-
 import { VideoClip, TimelineConfig } from '@/types/timeline';
 import { CompilationResult, ProgressCallback } from './types';
 
@@ -31,20 +30,20 @@ export class SimulationService {
       const totalDuration = clips.reduce((sum, clip) => sum + clip.duration, 0);
       const targetFrameRate = 30;
       
-      console.log(`SimulationService: Creating video for ${totalDuration}s at ${targetFrameRate}fps`);
+      console.log(`SimulationService: Creating MP4 video for ${totalDuration}s at ${targetFrameRate}fps`);
 
-      // Create video with proper timing
+      // Create MP4 video with proper timing
       const videoBlob = await this.createProperlyTimedVideo(canvas, clips, totalDuration, targetFrameRate, onProgress);
 
       onProgress?.(95, 'Finalizing compilation...');
       await this.delay(300);
 
       const downloadUrl = URL.createObjectURL(videoBlob);
-      const outputFile = `compiled_video_${Date.now()}.webm`;
+      const outputFile = `compiled_video_${Date.now()}.mp4`;
 
       onProgress?.(100, 'Compilation complete!');
       
-      console.log('SimulationService: Local compilation completed');
+      console.log('SimulationService: MP4 compilation completed');
       console.log('SimulationService: Video blob size:', videoBlob.size, 'bytes');
       console.log(`SimulationService: Successfully compiled ${clips.length} clips into ${outputFile}`);
       
@@ -69,9 +68,11 @@ export class SimulationService {
     return new Promise((resolve, reject) => {
       try {
         const stream = canvas.captureStream(frameRate);
+        
+        // Use MP4 codec instead of WebM
         const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm;codecs=vp8',
-          videoBitsPerSecond: 2500000 // Reduced bitrate for better compatibility
+          mimeType: 'video/mp4;codecs=h264',
+          videoBitsPerSecond: 5000000 // Higher bitrate for MP4
         });
         
         const chunks: Blob[] = [];
@@ -83,7 +84,7 @@ export class SimulationService {
         };
         
         mediaRecorder.onstop = () => {
-          const videoBlob = new Blob(chunks, { type: 'video/webm' });
+          const videoBlob = new Blob(chunks, { type: 'video/mp4' });
           resolve(videoBlob);
         };
         
@@ -91,9 +92,8 @@ export class SimulationService {
           reject(new Error('MediaRecorder error'));
         };
         
-        mediaRecorder.start(100); // Record in 100ms chunks for better timing
+        mediaRecorder.start(100);
         
-        // Record for the exact duration needed
         this.renderClipsWithCorrectTiming(canvas, clips, totalDuration, frameRate, onProgress).then(() => {
           setTimeout(() => {
             mediaRecorder.stop();
@@ -102,8 +102,8 @@ export class SimulationService {
         }).catch(reject);
         
       } catch (error) {
-        console.warn('MediaRecorder not available, creating fallback');
-        resolve(new Blob([new Uint8Array(5 * 1024 * 1024)], { type: 'video/webm' }));
+        console.warn('MP4 MediaRecorder not available, creating fallback');
+        resolve(new Blob([new Uint8Array(5 * 1024 * 1024)], { type: 'video/mp4' }));
       }
     });
   }
@@ -116,7 +116,7 @@ export class SimulationService {
     onProgress?: ProgressCallback
   ): Promise<void> {
     const ctx = canvas.getContext('2d')!;
-    const frameDelay = 1000 / frameRate; // Proper frame timing
+    const frameDelay = 1000 / frameRate;
     const totalFrames = Math.round(totalDuration * frameRate);
     
     console.log(`SimulationService: Rendering ${totalFrames} frames over ${totalDuration}s`);
@@ -124,7 +124,6 @@ export class SimulationService {
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
       const currentTime = frameIndex / frameRate;
       
-      // Find which clip should be playing at this time
       let currentClip = null;
       let clipStartTime = 0;
       
@@ -136,14 +135,12 @@ export class SimulationService {
         clipStartTime += clip.duration;
       }
       
-      // Clear canvas
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       if (currentClip) {
         const relativeTime = currentTime - clipStartTime;
         
-        // Draw clip content
         ctx.fillStyle = '#1e293b';
         ctx.fillRect(100, 100, canvas.width - 200, canvas.height - 200);
         
@@ -158,13 +155,11 @@ export class SimulationService {
         ctx.fillText(`Frame: ${frameIndex}/${totalFrames}`, canvas.width / 2, canvas.height / 2 + 60);
       }
       
-      // Update progress
       if (frameIndex % Math.round(frameRate) === 0) {
         const progress = 40 + (frameIndex / totalFrames) * 30;
         onProgress?.(progress, `Rendering frame ${frameIndex}/${totalFrames}`);
       }
       
-      // Wait for proper frame timing
       await this.delay(frameDelay);
     }
   }

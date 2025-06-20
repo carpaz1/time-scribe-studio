@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { VideoClip } from '@/types/timeline';
 
@@ -19,20 +20,22 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const playbackStateRef = useRef({ isPlaying: false, shouldAutoPlay: false });
 
   // Real-time preview - Find and load current clip
   useEffect(() => {
     console.log('CleanVideoPlayer: Looking for clip at time:', currentTime);
-    console.log('CleanVideoPlayer: Available clips:', clips.map(c => ({ id: c.id, position: c.position, duration: c.duration })));
     
     const activeClip = clips.find(clip => 
       currentTime >= clip.position && currentTime < clip.position + clip.duration
     );
 
-    console.log('CleanVideoPlayer: Found active clip:', activeClip?.name);
-
     if (activeClip && activeClip.id !== currentClip?.id) {
       console.log('CleanVideoPlayer: Loading new clip for REAL-TIME preview:', activeClip.name);
+      
+      // Store current playing state before switching clips
+      playbackStateRef.current.shouldAutoPlay = isPlaying;
+      
       setCurrentClip(activeClip);
       setIsLoading(true);
       
@@ -58,9 +61,9 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
       }
       setVideoSrc('');
     }
-  }, [currentTime, clips, currentClip?.id, videoSrc]);
+  }, [currentTime, clips, currentClip?.id, videoSrc, isPlaying]);
 
-  // Video time synchronization
+  // Video time synchronization with continuous playback support
   useEffect(() => {
     if (videoRef.current && currentClip && videoSrc && !isLoading) {
       const video = videoRef.current;
@@ -82,20 +85,24 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
     }
   }, [currentTime, currentClip, videoSrc, isLoading]);
 
-  // Play/pause handling
+  // Enhanced play/pause handling with continuous playback
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !videoSrc || !currentClip || isLoading) return;
 
+    playbackStateRef.current.isPlaying = isPlaying;
+
     if (isPlaying && video.paused && video.readyState >= 2) {
+      console.log('CleanVideoPlayer: Starting playback');
       video.play().catch(console.error);
     } else if (!isPlaying && !video.paused) {
+      console.log('CleanVideoPlayer: Pausing playback');
       video.pause();
     }
   }, [isPlaying, videoSrc, currentClip, isLoading]);
 
   const handleTimeUpdate = useCallback(() => {
-    if (videoRef.current && currentClip && isPlaying && !isLoading) {
+    if (videoRef.current && currentClip && playbackStateRef.current.isPlaying && !isLoading) {
       const video = videoRef.current;
       const startTime = currentClip.startTime || 0;
       
@@ -107,16 +114,28 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
         }
       }
     }
-  }, [currentClip, isPlaying, onTimeUpdate, isLoading]);
+  }, [currentClip, onTimeUpdate, isLoading]);
 
   const handleLoadedMetadata = useCallback(() => {
     console.log('CleanVideoPlayer: Video metadata loaded');
     setIsLoading(false);
+    
+    // Auto-play if we were playing before clip switch
+    if (playbackStateRef.current.shouldAutoPlay && videoRef.current) {
+      console.log('CleanVideoPlayer: Auto-resuming playback after clip switch');
+      videoRef.current.play().catch(console.error);
+      playbackStateRef.current.shouldAutoPlay = false;
+    }
   }, []);
 
   const handleCanPlay = useCallback(() => {
     console.log('CleanVideoPlayer: Video can play');
     setIsLoading(false);
+    
+    // Ensure continuous playback
+    if (playbackStateRef.current.isPlaying && videoRef.current?.paused) {
+      videoRef.current.play().catch(console.error);
+    }
   }, []);
 
   // Cleanup

@@ -2,9 +2,9 @@
 import React from 'react';
 import { VideoClip } from '@/types/timeline';
 import ImprovedWorkflowPanel from './ImprovedWorkflowPanel';
-import BackgroundSettings from './BackgroundSettings';
 import AIAssistant from './AIAssistant';
 import ClipsLibrary from './ClipsLibrary';
+import RandomBackgroundButton from './RandomBackgroundButton';
 
 interface EditorSidebarProps {
   sourceVideos: File[];
@@ -41,7 +41,6 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
   onAISuggestion,
   onAIEdit,
 }) => {
-  // Wrap non-async functions to return promises to match ImprovedWorkflowPanel expectations
   const handleQuickRandomize = async (duration: number, includePictures?: boolean) => {
     onQuickRandomize(duration, includePictures);
   };
@@ -66,7 +65,10 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
           onCancelProcessing={handleCancelProcessing}
         />
 
-        <BackgroundSettings />
+        {/* Simple Random Background Control */}
+        <div className="flex justify-center">
+          <RandomBackgroundButton />
+        </div>
 
         <AIAssistant
           clips={clips}
