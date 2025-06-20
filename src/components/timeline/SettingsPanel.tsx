@@ -21,41 +21,48 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
   const handleGitPull = async () => {
     setIsUpdating(true);
     setUpdateProgress(0);
-    setUpdateStage('Fetching latest changes...');
+    setUpdateStage('Starting git pull...');
     
     try {
-      // Simulate git pull process with progress updates
+      // Execute git pull command
+      const response = await fetch('http://localhost:4000/git-pull', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Git pull failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      // Simulate progress for visual feedback
       const stages = [
-        { stage: 'Fetching from remote...', progress: 20 },
-        { stage: 'Checking for updates...', progress: 40 },
+        { stage: 'Connecting to remote repository...', progress: 20 },
+        { stage: 'Fetching latest changes...', progress: 40 },
         { stage: 'Merging changes...', progress: 60 },
-        { stage: 'Updating dependencies...', progress: 80 },
-        { stage: 'Finalizing update...', progress: 100 }
+        { stage: 'Updating working directory...', progress: 80 },
+        { stage: 'Update complete!', progress: 100 }
       ];
       
       for (const { stage, progress } of stages) {
         setUpdateStage(stage);
         setUpdateProgress(progress);
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
       toast({
-        title: "Update completed!",
-        description: "Application has been updated to the latest version. Refresh the page to see changes.",
+        title: "Git pull completed!",
+        description: result.message || "Repository has been updated to the latest version.",
       });
       
-      // Suggest page refresh
-      setTimeout(() => {
-        if (confirm('Update completed! Would you like to refresh the page to see the latest changes?')) {
-          window.location.reload();
-        }
-      }, 1000);
-      
     } catch (error) {
-      console.error('Update error:', error);
+      console.error('Git pull error:', error);
       toast({
-        title: "Update failed",
-        description: "There was an error updating the application. Please try the manual update process.",
+        title: "Git pull failed",
+        description: error instanceof Error ? error.message : "Failed to pull latest changes from repository.",
         variant: "destructive",
       });
     } finally {
@@ -146,12 +153,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
             <CardHeader>
               <CardTitle className="text-lg text-white flex items-center gap-2">
                 <Download className="w-5 h-5" />
-                Application Updates
+                Git Repository Updates
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-slate-300">
-                Pull the latest changes from the repository without restarting the application.
+                Pull the latest changes from the git repository.
               </p>
               
               {isUpdating && (
@@ -170,7 +177,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
                 <Download className="w-4 h-4 mr-2" />
-                {isUpdating ? 'Updating...' : 'Pull Latest Changes'}
+                {isUpdating ? 'Pulling...' : 'Git Pull'}
               </Button>
             </CardContent>
           </Card>

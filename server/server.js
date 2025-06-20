@@ -1,4 +1,3 @@
-
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -182,6 +181,35 @@ app.post('/upload', (req, res, next) => {
         res.status(500).json({ error: 'Server error: ' + error.message });
       }
     }
+  });
+});
+
+app.post('/git-pull', (req, res) => {
+  console.log('Git pull request received');
+  
+  const { exec } = require('child_process');
+  
+  exec('git pull', { cwd: process.cwd() }, (error, stdout, stderr) => {
+    if (error) {
+      console.error('Git pull error:', error);
+      return res.status(500).json({ 
+        success: false, 
+        message: `Git pull failed: ${error.message}` 
+      });
+    }
+    
+    if (stderr && !stderr.includes('Already up to date')) {
+      console.warn('Git pull stderr:', stderr);
+    }
+    
+    console.log('Git pull stdout:', stdout);
+    
+    res.json({ 
+      success: true, 
+      message: stdout.trim() || 'Git pull completed successfully',
+      output: stdout,
+      errors: stderr
+    });
   });
 });
 
