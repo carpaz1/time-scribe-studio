@@ -11,7 +11,7 @@ interface ImprovedWorkflowPanelProps {
   sourceVideos: File[];
   timelineClips: any[];
   onVideoUpload: (files: File[]) => void;
-  onGenerateClips: (duration: number) => Promise<void>;
+  onGenerateClips?: (duration: number) => Promise<void>;
   onQuickRandomize: (duration: number, includePictures?: boolean) => Promise<void>;
   onCompile: () => Promise<void>;
   isProcessing: boolean;

@@ -107,6 +107,35 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     }
   }, [state.sourceVideos, updateState, updateProcessing, onExport, setLastCompilationResult]);
 
+  const handleGenerateClips = useCallback(async (duration: number) => {
+    updateProcessing({
+      isGenerating: true,
+      generationProgress: 0,
+      processingStage: 'Generating clips...'
+    });
+    
+    try {
+      const clips = await VideoCompilationService.generateClipsFromVideos(
+        state.sourceVideos,
+        duration,
+        (progress, stage) => {
+          updateProcessing({ generationProgress: progress, processingStage: stage });
+        }
+      );
+
+      updateState({ clips, timelineClips: clips });
+
+    } catch (error) {
+      console.error('Clip generation error:', error);
+    } finally {
+      updateProcessing({
+        isGenerating: false,
+        generationProgress: 0,
+        processingStage: ''
+      });
+    }
+  }, [state.sourceVideos, updateState, updateProcessing]);
+
   // Enhanced compilation
   const handleCompile = useCallback(async () => {
     updateProcessing({
@@ -206,8 +235,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               <ImprovedWorkflowPanel
                 sourceVideos={state.sourceVideos}
+                timelineClips={state.timelineClips}
                 onVideoUpload={handleFilesSelected}
-                onBulkUpload={handleFilesSelected}
+                onGenerateClips={handleGenerateClips}
                 onQuickRandomize={handleQuickRandomize}
                 onCompile={handleCompile}
                 isProcessing={isProcessing}

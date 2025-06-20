@@ -1,3 +1,4 @@
+
 import { VideoClip } from '@/types/timeline';
 import { CompilationService } from '@/services/compilationService';
 
@@ -57,7 +58,7 @@ export class VideoCompilationService {
     sourceVideos: File[],
     targetDuration: number,
     onProgress?: (progress: number, stage: string) => void
-  ): Promise<{ clips: VideoClip[] }> {
+  ): Promise<VideoClip[]> {
     console.log('VideoCompilationService: Generating clips from videos...');
     
     if (sourceVideos.length === 0) {
@@ -115,7 +116,7 @@ export class VideoCompilationService {
 
     onProgress?.(100, `Generated ${clips.length} clips successfully!`);
     console.log(`VideoCompilationService: Generated ${clips.length} clips from ${sourceVideos.length} videos`);
-    return { clips };
+    return clips;
   }
 
   static async compileTimeline(
