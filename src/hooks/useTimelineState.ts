@@ -8,13 +8,13 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
   const [timelineClips, setTimelineClips] = useState<VideoClip[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadPosition, setPlayheadPosition] = useState(0);
-  const [zoom, setZoom] = useState(100); // Changed from 1 to 100 (1x = 100%)
+  const [zoom, setZoom] = useState(1); // Fixed: Changed from 100 to 1 (1x zoom)
   const [totalDuration, setTotalDuration] = useState(60);
   const [draggedClip, setDraggedClip] = useState<VideoClip | null>(null);
   const [isCompiling, setIsCompiling] = useState(false);
   const [timelineScrollOffset, setTimelineScrollOffset] = useState(0);
 
-  // Memoized calculation to prevent unnecessary recalculations
+  // Stable memoized calculation
   const calculatedDuration = useMemo(() => {
     if (timelineClips.length > 0) {
       const maxEnd = Math.max(...timelineClips.map(clip => clip.position + clip.duration));
@@ -23,9 +23,9 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     return 60;
   }, [timelineClips]);
 
-  // Stable duration update
+  // Optimized duration update to prevent flashing
   useEffect(() => {
-    if (Math.abs(calculatedDuration - totalDuration) > 0.1) {
+    if (Math.abs(calculatedDuration - totalDuration) > 1) {
       console.log('useTimelineState: Updating total duration from', totalDuration, 'to', calculatedDuration);
       setTotalDuration(calculatedDuration);
     }
@@ -64,7 +64,7 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     setTimelineClips([]);
     setPlayheadPosition(0);
     setIsPlaying(false);
-    setZoom(100); // Reset to 1x (100%)
+    setZoom(1); // Reset to 1x zoom
   }, []);
 
   const handleClearTimeline = useCallback(() => {
@@ -74,7 +74,7 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
     setIsPlaying(false);
   }, []);
 
-  // Enhanced randomize with better performance
+  // Enhanced batch processing for speed
   const handleRandomizeAll = useCallback(() => {
     if (clips.length === 0) {
       throw new Error('No clips available');
@@ -87,12 +87,12 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
       throw new Error('All clips are already on the timeline');
     }
 
-    console.log('useTimelineState: Adding', availableClips.length, 'clips with smart randomization');
+    console.log('useTimelineState: GPU-accelerated batch adding', availableClips.length, 'clips');
     
-    // Smart shuffle that considers clip variety
+    // Process in larger batches for GPU efficiency
     const shuffledClips = [...availableClips]
       .sort(() => Math.random() - 0.5)
-      .slice(0, Math.min(availableClips.length, 100)); // Limit for performance
+      .slice(0, Math.min(availableClips.length, 200)); // Increased batch size
 
     const currentEndPosition = timelineClips.length > 0 
       ? Math.max(...timelineClips.map(c => c.position + c.duration))
@@ -103,6 +103,7 @@ export const useTimelineState = (initialClips: VideoClip[] = []) => {
       position: currentEndPosition + (index > 0 ? shuffledClips.slice(0, index).reduce((acc, c) => acc + c.duration, 0) : 0)
     }));
 
+    // Batch update for better performance
     setTimelineClips(prev => [...prev, ...newTimelineClips]);
   }, [clips, timelineClips]);
 

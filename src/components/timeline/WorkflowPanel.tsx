@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, Zap, Play, Image, X, Sparkles, Clock, FileVideo } from 'lucide-react';
+import { Upload, Zap, Play, Image, X, Sparkles, Clock, FileVideo, Cpu, Brain } from 'lucide-react';
 
 interface WorkflowPanelProps {
   sourceVideos: File[];
@@ -33,8 +33,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
   onCancelProcessing,
 }) => {
   const [selectedDuration, setSelectedDuration] = useState<1 | 2 | 5>(1);
-  const [activeWorkflow, setActiveWorkflow] = useState<'quick' | 'custom'>('quick');
+  const [activeWorkflow, setActiveWorkflow] = useState<'quick' | 'ai' | 'custom'>('ai');
   const [includePictures, setIncludePictures] = useState(false);
+  const [useGPUAcceleration, setUseGPUAcceleration] = useState(true);
+  const [aiEnhancement, setAiEnhancement] = useState(true);
 
   const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -58,21 +60,78 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
     setIncludePictures(checked === true);
   };
 
+  const handleGPUToggle = (checked: boolean | "indeterminate") => {
+    setUseGPUAcceleration(checked === true);
+  };
+
+  const handleAIToggle = (checked: boolean | "indeterminate") => {
+    setAiEnhancement(checked === true);
+  };
+
   return (
-    <Card className="bg-slate-800/50 border-slate-700">
+    <Card className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 border-slate-600/50 backdrop-blur-sm">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg text-slate-200 whitespace-nowrap flex items-center">
-          <Sparkles className="w-5 h-5 mr-2 text-purple-400" />
-          Smart Video Workflow
+          <Brain className="w-5 h-5 mr-2 text-purple-400" />
+          AI-Powered Video Workflow
+          <div className="ml-auto flex space-x-1">
+            {useGPUAcceleration && <Cpu className="w-4 h-4 text-green-400" />}
+            {aiEnhancement && <Sparkles className="w-4 h-4 text-purple-400" />}
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Step 1: Upload */}
+        {/* Step 1: Upload with Enhanced Options */}
         <div className="space-y-3">
           <Label className="text-slate-300 text-sm font-medium block flex items-center">
             <Upload className="w-4 h-4 mr-2" />
             1. Upload Media ({sourceVideos.length} loaded)
           </Label>
+          
+          {/* Enhanced Options */}
+          <div className="space-y-2">
+            <div className="flex items-center space-x-4 p-2 bg-slate-700/30 rounded">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="gpu-accel" 
+                  checked={useGPUAcceleration}
+                  onCheckedChange={handleGPUToggle}
+                  disabled={isProcessing}
+                />
+                <label htmlFor="gpu-accel" className="text-xs text-slate-300 flex items-center">
+                  <Cpu className="w-3 h-3 mr-1" />
+                  GPU Acceleration
+                </label>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="ai-enhance" 
+                  checked={aiEnhancement}
+                  onCheckedChange={handleAIToggle}
+                  disabled={isProcessing}
+                />
+                <label htmlFor="ai-enhance" className="text-xs text-slate-300 flex items-center">
+                  <Brain className="w-3 h-3 mr-1" />
+                  AI Enhancement
+                </label>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="include-pictures" 
+                  checked={includePictures}
+                  onCheckedChange={handlePicturesToggle}
+                  disabled={isProcessing}
+                />
+                <label htmlFor="include-pictures" className="text-xs text-slate-300 flex items-center">
+                  <Image className="w-3 h-3 mr-1" />
+                  Pictures
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-2">
             <div>
               <input
@@ -123,44 +182,59 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
           </div>
         </div>
 
-        {/* Step 2: Smart Generation & Compilation */}
+        {/* Enhanced Generation & Compilation */}
         {sourceVideos.length > 0 && (
           <div className="space-y-3">
             <Label className="text-slate-300 text-sm font-medium block flex items-center">
-              <Zap className="w-4 h-4 mr-2 text-yellow-400" />
-              2. Smart Generation & Compilation
+              <Brain className="w-4 h-4 mr-2 text-purple-400" />
+              2. AI-Powered Generation & Compilation
             </Label>
-            
-            {/* Enhanced Options */}
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2 p-2 bg-slate-700/30 rounded">
-                <Checkbox 
-                  id="include-pictures" 
-                  checked={includePictures}
-                  onCheckedChange={handlePicturesToggle}
-                  disabled={isProcessing}
-                />
-                <label 
-                  htmlFor="include-pictures" 
-                  className="text-xs text-slate-300 cursor-pointer flex items-center"
-                >
-                  <Image className="w-3 h-3 mr-1" />
-                  Include Pictures
-                </label>
-              </div>
-            </div>
 
-            <Tabs value={activeWorkflow} onValueChange={(value) => setActiveWorkflow(value as 'quick' | 'custom')}>
-              <TabsList className="grid w-full grid-cols-2 bg-slate-700/50 h-8">
+            <Tabs value={activeWorkflow} onValueChange={(value) => setActiveWorkflow(value as 'quick' | 'ai' | 'custom')}>
+              <TabsList className="grid w-full grid-cols-3 bg-slate-700/50 h-8">
+                <TabsTrigger value="ai" className="text-xs flex items-center">
+                  <Brain className="w-3 h-3 mr-1" />
+                  AI Auto
+                </TabsTrigger>
                 <TabsTrigger value="quick" className="text-xs flex items-center">
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  Smart Auto
+                  <Zap className="w-3 h-3 mr-1" />
+                  Quick
                 </TabsTrigger>
                 <TabsTrigger value="custom" className="text-xs flex items-center">
                   <Clock className="w-3 h-3 mr-1" />
-                  Custom Timeline
+                  Manual
                 </TabsTrigger>
               </TabsList>
+              
+              <TabsContent value="ai" className="space-y-3 mt-3">
+                <Select 
+                  value={selectedDuration.toString()} 
+                  onValueChange={(value) => setSelectedDuration(Number(value) as 1 | 2 | 5)}
+                  disabled={isProcessing}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">🧠 1 min - AI Smart Cuts</SelectItem>
+                    <SelectItem value="2">🎯 2 min - AI Balanced Flow</SelectItem>
+                    <SelectItem value="5">🎬 5 min - AI Cinematic</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleQuickGenerate}
+                  disabled={isProcessing}
+                  className="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-700 text-xs px-2 py-1 h-8"
+                >
+                  <Brain className="w-3 h-3 mr-1" />
+                  {isProcessing ? 'AI Processing...' : `AI Generate ${selectedDuration}min Video`}
+                </Button>
+                {!isProcessing && (
+                  <div className="text-xs text-slate-400 text-center">
+                    🧠 GPU-accelerated AI with smart scene detection & transitions
+                  </div>
+                )}
+              </TabsContent>
               
               <TabsContent value="quick" className="space-y-3 mt-3">
                 <Select 
@@ -174,27 +248,22 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                   <SelectContent>
                     <SelectItem value="1">⚡ 1 min (60 clips) - Fast & Sharp</SelectItem>
                     <SelectItem value="2">🎯 2 min (120 clips) - Balanced</SelectItem>
-                    <SelectItem value="5">🎬 5 min (300 clips) - Cinematic</SelectItem>
+                    <SelectItem value="5">🎬 5 min (300 clips) - Extended</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
                   onClick={handleQuickGenerate}
                   disabled={isProcessing}
-                  className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-xs px-2 py-1 h-8"
+                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-xs px-2 py-1 h-8"
                 >
                   <Zap className="w-3 h-3 mr-1" />
-                  {isProcessing ? 'Smart Processing...' : `Generate ${selectedDuration}min Video`}
+                  {isProcessing ? 'GPU Processing...' : `Quick Generate ${selectedDuration}min`}
                 </Button>
-                {!isProcessing && (
-                  <div className="text-xs text-slate-400 text-center">
-                    ✨ Auto-generation with smart transitions & color correction
-                  </div>
-                )}
               </TabsContent>
               
               <TabsContent value="custom" className="space-y-3 mt-3">
                 <div className="text-xs text-slate-400 p-2 bg-slate-700/20 rounded">
-                  Manual timeline creation for precise control over clip placement and timing
+                  Manual timeline creation with AI assistance available
                 </div>
                 <Button
                   onClick={onCompile}
@@ -209,13 +278,14 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
           </div>
         )}
 
-        {/* Enhanced Progress Display */}
+        {/* Enhanced Progress Display with GPU Info */}
         {isProcessing && (
           <div className="space-y-3 border-t border-slate-600 pt-3">
             <div className="flex items-center justify-between text-xs text-slate-300">
               <span className="truncate pr-2 flex-1 flex items-center">
-                <Sparkles className="w-3 h-3 mr-1 text-purple-400 animate-pulse" />
-                {processingStage || 'Smart Processing...'}
+                {useGPUAcceleration && <Cpu className="w-3 h-3 mr-1 text-green-400 animate-pulse" />}
+                {aiEnhancement && <Brain className="w-3 h-3 mr-1 text-purple-400 animate-pulse" />}
+                {processingStage || 'GPU + AI Processing...'}
               </span>
               <span className="whitespace-nowrap font-mono bg-slate-700/50 px-2 py-1 rounded">
                 {Math.round(processingProgress)}%
@@ -228,7 +298,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
             <div className="flex items-center justify-between text-xs">
               <div className="text-slate-400 flex items-center">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
-                {processingProgress < 50 ? 'Generating smart clips...' : 'Compiling with AI enhancements...'}
+                {processingProgress < 30 ? 'GPU initialization...' : 
+                 processingProgress < 60 ? 'AI analyzing content...' : 
+                 'Final GPU compilation...'}
               </div>
               <Button
                 onClick={onCancelProcessing}

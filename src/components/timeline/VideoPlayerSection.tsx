@@ -1,8 +1,7 @@
 
 import React from 'react';
 import { VideoClip } from '@/types/timeline';
-import VideoPlayer from './VideoPlayer';
-import PlaybackControls from './PlaybackControls';
+import EnhancedVideoPlayer from './EnhancedVideoPlayer';
 
 interface VideoPlayerSectionProps {
   timelineClips: VideoClip[];
@@ -18,9 +17,9 @@ const VideoPlayerSection: React.FC<VideoPlayerSectionProps> = ({
   onTimeUpdate,
 }) => {
   return (
-    <div className="bg-gradient-to-br from-indigo-900/30 via-slate-800/40 to-purple-900/30 backdrop-blur-sm h-full p-6">
-      <div className="w-full h-full bg-slate-900/80 rounded-3xl border border-indigo-600/30 overflow-hidden shadow-2xl backdrop-blur-md ring-1 ring-white/10">
-        <VideoPlayer
+    <div className="bg-gradient-to-br from-indigo-950/40 via-slate-900/60 to-purple-950/40 backdrop-blur-sm h-full p-6">
+      <div className="w-full h-full bg-gradient-to-br from-slate-900/90 to-slate-800/90 rounded-3xl border border-indigo-500/40 overflow-hidden shadow-2xl backdrop-blur-md ring-1 ring-white/10">
+        <EnhancedVideoPlayer
           clips={timelineClips}
           currentTime={playheadPosition}
           isPlaying={isPlaying}
