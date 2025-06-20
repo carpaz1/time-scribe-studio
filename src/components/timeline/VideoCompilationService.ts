@@ -1,118 +1,149 @@
 
-import { VideoClip, CompileRequest } from '@/types/timeline';
-import { VideoCompilerService } from '@/services/videoCompiler';
-import { toast } from "@/hooks/use-toast";
+import { VideoClip } from '@/types/timeline';
+import { CompilationService } from '@/services/compilationService';
 
 export class VideoCompilationService {
-  static async compileTimeline(
-    clips: VideoClip[],
-    config: any,
-    onExport?: (data: CompileRequest) => void,
+  static async quickRandomizeAndCompile(
+    sourceVideos: File[],
+    duration: number,
+    includePictures: boolean = false,
+    onExport?: (data: any) => void,
     onProgress?: (progress: number, stage: string) => void
-  ) {
-    if (clips.length === 0) {
-      toast({
-        title: "No clips to compile",
-        description: "Add clips to the timeline first",
-        variant: "destructive",
-      });
-      return;
+  ): Promise<{ clips: VideoClip[]; compilationResult: { downloadUrl?: string; outputFile?: string } } | null> {
+    console.log('VideoCompilationService: Starting quick randomize and compile');
+    
+    if (sourceVideos.length === 0) {
+      throw new Error('No source videos available');
     }
 
     try {
-      const compilationConfig = { 
-        totalDuration: config.totalDuration, 
-        clipOrder: clips.map(c => c.id), 
-        zoom: config.zoom, 
-        playheadPosition: config.playheadPosition,
-        preserveAudio: true,
-        audioCodec: 'aac',
-        videoCodec: 'h264',
-        smartTransitions: true,
-        autoColorCorrection: true,
-      };
+      onProgress?.(5, 'Analyzing source videos...');
 
-      const result = await VideoCompilerService.compileTimeline(
+      // Generate clips from source videos
+      const clips = await this.generateClipsFromVideos(sourceVideos, duration, onProgress);
+      
+      if (clips.length === 0) {
+        throw new Error('No clips could be generated from source videos');
+      }
+
+      onProgress?.(30, `Generated ${clips.length} clips, starting compilation...`);
+
+      // Compile the generated clips
+      const compilationResult = await this.compileTimeline(
         clips,
-        compilationConfig,
+        {
+          totalDuration: duration,
+          zoom: 1,
+          playheadPosition: 0,
+          clipOrder: clips.map(c => c.id)
+        },
         onExport,
-        onProgress
+        (progress, stage) => {
+          // Map compilation progress to 30-100 range
+          const adjustedProgress = 30 + (progress * 0.7);
+          onProgress?.(adjustedProgress, stage);
+        }
       );
 
-      toast({
-        title: "Enhanced Compilation Complete!",
-        description: `Video compiled with smart optimization features.`,
-      });
+      console.log('VideoCompilationService: Quick randomize completed successfully');
+      return { clips, compilationResult };
 
-      return result;
     } catch (error) {
-      console.error('Compilation failed:', error);
-      toast({
-        title: "Compilation Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive",
-      });
+      console.error('VideoCompilationService: Quick randomize failed:', error);
       throw error;
     }
   }
 
-  static async quickRandomizeAndCompile(
-    videos: File[],
-    duration: number,
-    includePictures: boolean = false,
-    onExport?: (data: CompileRequest) => void,
+  private static async generateClipsFromVideos(
+    sourceVideos: File[],
+    targetDuration: number,
     onProgress?: (progress: number, stage: string) => void
-  ) {
-    if (videos.length === 0) {
-      toast({
-        title: "No videos available",
-        description: "Please upload some videos first",
-        variant: "destructive",
-      });
-      return;
+  ): Promise<VideoClip[]> {
+    const clips: VideoClip[] = [];
+    const clipDuration = Math.min(5, targetDuration / Math.max(sourceVideos.length, 1)); // Max 5 seconds per clip
+    
+    onProgress?.(10, 'Creating video clips...');
+
+    for (let i = 0; i < sourceVideos.length; i++) {
+      const file = sourceVideos[i];
+      
+      try {
+        // Create a basic video element to get duration
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        
+        const duration = await new Promise<number>((resolve) => {
+          video.onloadedmetadata = () => {
+            resolve(video.duration || clipDuration);
+          };
+          video.onerror = () => {
+            console.warn(`Could not load metadata for ${file.name}, using default duration`);
+            resolve(clipDuration);
+          };
+          video.src = URL.createObjectURL(file);
+        });
+
+        // Clean up the video element
+        URL.revokeObjectURL(video.src);
+
+        // Generate clip with random start time
+        const maxStartTime = Math.max(0, duration - clipDuration);
+        const startTime = Math.random() * maxStartTime;
+
+        const clip: VideoClip = {
+          id: `clip_${Date.now()}_${i}`,
+          name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${i + 1}`,
+          startTime,
+          duration: Math.min(clipDuration, duration - startTime),
+          thumbnail: '', // Will be generated later if needed
+          sourceFile: file,
+          position: i * clipDuration,
+          originalVideoId: `video_${i}`
+        };
+
+        clips.push(clip);
+        
+        const progress = 10 + ((i + 1) / sourceVideos.length) * 20;
+        onProgress?.(progress, `Generated clip ${i + 1}/${sourceVideos.length}`);
+
+      } catch (error) {
+        console.error(`Error generating clip from ${file.name}:`, error);
+        // Continue with other files even if one fails
+      }
     }
 
-    const mediaToProcess = includePictures 
-      ? videos 
-      : videos.filter(file => file.type.startsWith('video/'));
+    console.log(`VideoCompilationService: Generated ${clips.length} clips from ${sourceVideos.length} videos`);
+    return clips;
+  }
 
-    if (mediaToProcess.length === 0) {
-      toast({
-        title: `No ${includePictures ? 'media files' : 'videos'} available`,
-        description: `Please upload some ${includePictures ? 'media files' : 'videos'} first`,
-        variant: "destructive",
-      });
-      return;
+  static async compileTimeline(
+    timelineClips: VideoClip[],
+    config: any,
+    onExport?: (data: any) => void,
+    onProgress?: (progress: number, stage: string) => void
+  ): Promise<{ downloadUrl?: string; outputFile?: string }> {
+    console.log('VideoCompilationService: Starting timeline compilation');
+    
+    if (timelineClips.length === 0) {
+      throw new Error('No clips to compile');
     }
 
-    const targetClipCount = duration * 60;
-    
-    // Import ClipGenerationService dynamically to avoid circular imports
-    const { ClipGenerationService } = await import('./ClipGenerationService');
-    
-    const newClips = await ClipGenerationService.generateClipsBatch(
-      mediaToProcess, 
-      targetClipCount, 
-      1,
-      onProgress
-    );
-    
-    const compilationResult = await this.compileTimeline(
-      newClips,
-      { 
-        totalDuration: newClips.length, 
-        zoom: 1, 
-        playheadPosition: 0 
-      },
-      onExport,
-      onProgress
-    );
+    try {
+      const result = await CompilationService.compileWithAI(
+        timelineClips,
+        config,
+        onProgress
+      );
 
-    toast({
-      title: `${duration}-minute video complete!`,
-      description: `Generated and compiled ${newClips.length} clips with smart optimization.`,
-    });
+      if (onExport) {
+        onExport({ config, clips: timelineClips });
+      }
 
-    return { clips: newClips, compilationResult };
+      console.log('VideoCompilationService: Timeline compilation completed');
+      return result;
+    } catch (error) {
+      console.error('VideoCompilationService: Timeline compilation failed:', error);
+      throw error;
+    }
   }
 }

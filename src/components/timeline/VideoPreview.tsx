@@ -19,7 +19,11 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   const [videoError, setVideoError] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
-  const fullVideoUrl = `http://localhost:4000${downloadUrl}`;
+  // Determine if this is a blob URL or server URL
+  const isBlob = downloadUrl.startsWith('blob:');
+  const fullVideoUrl = isBlob ? downloadUrl : `http://localhost:4000${downloadUrl}`;
+
+  console.log('VideoPreview: URL type:', isBlob ? 'blob' : 'server', 'URL:', fullVideoUrl);
 
   const handlePlayPause = () => {
     if (videoRef.current) {
@@ -43,20 +47,32 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   };
 
   const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = fullVideoUrl;
-    link.download = outputFile || 'compiled-video.mp4';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (isBlob) {
+      // For blob URLs, create a download link directly
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = outputFile || 'compiled-video.mp4';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      // For server URLs, use the full server path
+      const link = document.createElement('a');
+      link.href = fullVideoUrl;
+      link.download = outputFile || 'compiled-video.mp4';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   const handleVideoEnd = () => {
     setIsPlaying(false);
   };
 
-  const handleVideoError = () => {
-    console.error('Video preview failed to load:', fullVideoUrl);
+  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    console.error('VideoPreview: Video error:', e, 'URL:', fullVideoUrl);
     setVideoError(true);
   };
 
@@ -86,7 +102,8 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
                 <div className="text-center">
                   <div className="text-4xl mb-2">⚠️</div>
                   <p>Failed to load video preview</p>
-                  <p className="text-sm text-slate-500">You can still download the file</p>
+                  <p className="text-sm text-slate-500">Video type: {isBlob ? 'Local simulation' : 'Server generated'}</p>
+                  <p className="text-xs text-slate-600 mt-1">You can still try to download the file</p>
                 </div>
               </div>
             ) : (
@@ -96,6 +113,8 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
                 className="w-full aspect-video"
                 onEnded={handleVideoEnd}
                 onError={handleVideoError}
+                onLoadStart={() => console.log('VideoPreview: Video load started')}
+                onCanPlay={() => console.log('VideoPreview: Video can play')}
                 controls={false}
                 playsInline
               />
@@ -130,6 +149,10 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
           <div className="flex items-center justify-between">
             <div className="text-sm text-slate-400">
               File: {outputFile}
+              <br />
+              <span className="text-xs text-slate-500">
+                Type: {isBlob ? 'Local simulation' : 'Server compilation'}
+              </span>
             </div>
             <div className="flex gap-3">
               <Button
