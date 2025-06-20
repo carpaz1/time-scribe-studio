@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +6,9 @@ import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, Zap, Play, Image, X, Sparkles, Clock, FileVideo, Cpu, Brain } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Upload, Zap, Play, Image, X, Sparkles, Clock, FileVideo, Cpu, Brain, AlertTriangle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface WorkflowPanelProps {
   sourceVideos: File[];
@@ -37,22 +38,73 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
   const [includePictures, setIncludePictures] = useState(false);
   const [useGPUAcceleration, setUseGPUAcceleration] = useState(true);
   const [aiEnhancement, setAiEnhancement] = useState(true);
+  const [fileSizeWarning, setFileSizeWarning] = useState<string[]>([]);
+  const { toast } = useToast();
+
+  const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 
   const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     if (files.length > 0) {
-      onVideoUpload(files);
+      validateAndProcessFiles(files, onVideoUpload);
     }
   };
 
   const handleDirectoryInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     if (files.length > 0) {
-      onBulkUpload(files);
+      validateAndProcessFiles(files, onBulkUpload);
+    }
+  };
+
+  const validateAndProcessFiles = (files: File[], callback: (files: File[]) => void) => {
+    const validFiles: File[] = [];
+    const warnings: string[] = [];
+
+    files.forEach(file => {
+      if (file.size > MAX_FILE_SIZE) {
+        warnings.push(`${file.name} (${(file.size / (1024 * 1024 * 1024)).toFixed(2)}GB) exceeds 2GB limit`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    setFileSizeWarning(warnings);
+    
+    if (warnings.length > 0) {
+      toast({
+        title: "File Size Warning",
+        description: `${warnings.length} files exceed 2GB limit and were skipped`,
+        variant: "destructive",
+      });
+    }
+
+    if (validFiles.length > 0) {
+      callback(validFiles);
     }
   };
 
   const handleQuickGenerate = () => {
+    if (sourceVideos.length === 0) {
+      toast({
+        title: "No videos",
+        description: "Please upload some videos first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check for large files before processing
+    const largeFiles = sourceVideos.filter(file => file.size > MAX_FILE_SIZE);
+    if (largeFiles.length > 0) {
+      toast({
+        title: "Large files detected",
+        description: "Some files are too large and may cause issues",
+        variant: "destructive",
+      });
+      return;
+    }
+
     onQuickRandomize(selectedDuration, includePictures);
   };
 
@@ -81,11 +133,29 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* File Size Warnings */}
+        {fileSizeWarning.length > 0 && (
+          <Alert className="border-yellow-500/50 bg-yellow-500/10">
+            <AlertTriangle className="h-4 w-4 text-yellow-400" />
+            <AlertDescription className="text-yellow-200 text-sm">
+              <div className="font-medium mb-1">Large files skipped:</div>
+              <ul className="text-xs space-y-1">
+                {fileSizeWarning.slice(0, 3).map((warning, i) => (
+                  <li key={i}>• {warning}</li>
+                ))}
+                {fileSizeWarning.length > 3 && (
+                  <li>• ...and {fileSizeWarning.length - 3} more</li>
+                )}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Step 1: Upload with Enhanced Options */}
         <div className="space-y-3">
           <Label className="text-slate-300 text-sm font-medium block flex items-center">
             <Upload className="w-4 h-4 mr-2" />
-            1. Upload Media ({sourceVideos.length} loaded)
+            1. Upload Media ({sourceVideos.length} loaded, max 2GB each)
           </Label>
           
           {/* Enhanced Options */}
@@ -223,7 +293,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 </Select>
                 <Button
                   onClick={handleQuickGenerate}
-                  disabled={isProcessing}
+                  disabled={isProcessing || sourceVideos.length === 0}
                   className="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-700 text-xs px-2 py-1 h-8"
                 >
                   <Brain className="w-3 h-3 mr-1" />
@@ -253,7 +323,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 </Select>
                 <Button
                   onClick={handleQuickGenerate}
-                  disabled={isProcessing}
+                  disabled={isProcessing || sourceVideos.length === 0}
                   className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-xs px-2 py-1 h-8"
                 >
                   <Zap className="w-3 h-3 mr-1" />
@@ -267,7 +337,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 </div>
                 <Button
                   onClick={onCompile}
-                  disabled={isProcessing}
+                  disabled={isProcessing || sourceVideos.length === 0}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs px-2 py-1 h-8"
                 >
                   <Play className="w-3 h-3 mr-1" />
@@ -278,7 +348,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
           </div>
         )}
 
-        {/* Enhanced Progress Display with GPU Info */}
+        {/* Enhanced Progress Display */}
         {isProcessing && (
           <div className="space-y-3 border-t border-slate-600 pt-3">
             <div className="flex items-center justify-between text-xs text-slate-300">
@@ -298,9 +368,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
             <div className="flex items-center justify-between text-xs">
               <div className="text-slate-400 flex items-center">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
-                {processingProgress < 30 ? 'GPU initialization...' : 
+                {processingProgress < 30 ? 'Validating files...' : 
                  processingProgress < 60 ? 'AI analyzing content...' : 
-                 'Final GPU compilation...'}
+                 'Final compilation...'}
               </div>
               <Button
                 onClick={onCancelProcessing}
