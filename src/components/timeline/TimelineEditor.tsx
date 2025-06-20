@@ -11,8 +11,9 @@ import Playhead from './Playhead';
 import TimelineRuler from './TimelineRuler';
 import ClipLibrary from './ClipLibrary';
 import VideoPlayer from './VideoPlayer';
-import TimelineControls from './TimelineControls';
 import SettingsPanel from './SettingsPanel';
+import EditorHeader from './EditorHeader';
+import TimelineInfoBar from './TimelineInfoBar';
 import { ZipDownloaderService } from '@/services/zipDownloader';
 
 interface TimelineEditorProps {
@@ -331,38 +332,23 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   return (
     <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col overflow-hidden">
       {/* Enhanced Header with Glassmorphism */}
-      <div className="bg-slate-800/80 backdrop-blur-md border-b border-slate-700/50 shadow-2xl shrink-0">
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 via-purple-600 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-xl">⚡</span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Video Editor Pro
-              </h1>
-              <p className="text-slate-400 text-sm font-medium">Professional video compilation suite</p>
-            </div>
-          </div>
-          <TimelineControls
-            isPlaying={isPlaying}
-            isCompiling={isCompiling}
-            compilationProgress={compilationProgress}
-            compilationStage={compilationStage}
-            timelineClipsLength={timelineClips.length}
-            onTogglePlayback={togglePlayback}
-            onZoomIn={handleZoomIn}
-            onZoomOut={handleZoomOut}
-            onReset={handleResetWithToast}
-            onClearTimeline={handleClearTimelineWithToast}
-            onExportJSON={handleExportJSON}
-            onCompile={handleCompile}
-            onDownloadClips={handleDownloadClips}
-            onOpenSettings={handleOpenSettings}
-            lastCompilationResult={lastCompilationResult}
-          />
-        </div>
-      </div>
+      <EditorHeader
+        isPlaying={isPlaying}
+        isCompiling={isCompiling}
+        compilationProgress={compilationProgress}
+        compilationStage={compilationStage}
+        timelineClipsLength={timelineClips.length}
+        onTogglePlayback={togglePlayback}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onReset={handleResetWithToast}
+        onClearTimeline={handleClearTimelineWithToast}
+        onExportJSON={handleExportJSON}
+        onCompile={handleCompile}
+        onDownloadClips={handleDownloadClips}
+        onOpenSettings={handleOpenSettings}
+        lastCompilationResult={lastCompilationResult}
+      />
 
       {/* Main Content with Resizable Panels */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
@@ -406,33 +392,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             <ResizablePanel defaultSize={40} minSize={25}>
               <div className="flex flex-col h-full">
                 {/* Enhanced Timeline Info Bar */}
-                <div className="bg-slate-800/60 backdrop-blur-md border-b border-slate-700/50 px-6 py-4 shrink-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="bg-gradient-to-r from-emerald-500/20 to-teal-500/20 rounded-lg px-4 py-2 border border-emerald-500/30">
-                        <span className="text-xs text-emerald-400 font-medium">Clips: </span> 
-                        <span className="text-white font-bold">{timelineClips.length}</span>
-                      </div>
-                      <div className="bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-lg px-4 py-2 border border-blue-500/30">
-                        <span className="text-xs text-blue-400 font-medium">Duration: </span> 
-                        <span className="text-white font-bold">{totalDuration.toFixed(1)}s</span>
-                      </div>
-                      <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg px-4 py-2 border border-purple-500/30">
-                        <span className="text-xs text-purple-400 font-medium">Zoom: </span> 
-                        <span className="text-white font-bold">{zoom.toFixed(1)}x</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="bg-slate-700/50 rounded-lg px-4 py-2 border border-slate-600/50">
-                        <span className="text-xs text-slate-300 font-medium">Playhead: </span> 
-                        <span className="text-white font-bold">{playheadPosition.toFixed(1)}s</span>
-                      </div>
-                      <div className="text-xs text-slate-400 bg-slate-700/30 px-3 py-2 rounded-lg border border-slate-600/30">
-                        ⇧ + Scroll to zoom timeline
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <TimelineInfoBar
+                  timelineClipsLength={timelineClips.length}
+                  totalDuration={totalDuration}
+                  zoom={zoom}
+                  playheadPosition={playheadPosition}
+                />
 
                 {/* Enhanced Timeline Container */}
                 <div className="flex-1 overflow-hidden bg-gradient-to-br from-slate-900/90 to-slate-800/90">

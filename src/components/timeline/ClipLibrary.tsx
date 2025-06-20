@@ -1,15 +1,17 @@
-import React, { useState, useRef } from 'react';
-import { Upload, Video, Settings, Shuffle, Plus, Film } from 'lucide-react';
+
+import React, { useState } from 'react';
+import { Settings, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
+import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { VideoClip } from '@/types/timeline';
 import VideoUploader from './VideoUploader';
 import LibraryClipThumbnail from './LibraryClipThumbnail';
 import BulkDirectorySelector from './BulkDirectorySelector';
 import SettingsPanel from './SettingsPanel';
+import ClipGenerationPanel from './ClipGenerationPanel';
+import LibraryStats from './LibraryStats';
+import EmptyLibraryState from './EmptyLibraryState';
 
 interface SourceVideo {
   name: string;
@@ -96,7 +98,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     });
   };
 
-  const generateClips = async () => {
+  const generateClips = async (config: { numClips: number; clipDuration: number }) => {
     if (sourceVideos.length === 0) {
       toast({
         title: "No videos uploaded",
@@ -119,13 +121,13 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         const duration = sourceVideo.duration;
         
         if (duration > 0) {
-          // Generate multiple clips per video
-          const clipsPerVideo = Math.min(3, Math.max(1, Math.floor(duration / 10)));
+          // Generate specified number of clips per video
+          const clipsPerVideo = Math.min(config.numClips, Math.max(1, Math.floor(duration / config.clipDuration)));
           
           for (let j = 0; j < clipsPerVideo; j++) {
-            const maxStartTime = Math.max(0, duration - 5);
-            const startTime = (maxStartTime / clipsPerVideo) * j;
-            const clipDuration = Math.min(5, duration - startTime);
+            const maxStartTime = Math.max(0, duration - config.clipDuration);
+            const startTime = maxStartTime > 0 ? (maxStartTime / clipsPerVideo) * j : 0;
+            const clipDuration = Math.min(config.clipDuration, duration - startTime);
             
             if (clipDuration > 0.5) {
               // Generate thumbnail for this clip
@@ -191,30 +193,10 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <Card className="bg-slate-700/30 border-slate-600/50">
-            <CardContent className="p-3">
-              <div className="flex items-center space-x-2">
-                <Video className="w-4 h-4 text-blue-400" />
-                <div>
-                  <p className="text-xs text-slate-400">Videos</p>
-                  <p className="text-sm font-semibold text-white">{sourceVideos.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-slate-700/30 border-slate-600/50">
-            <CardContent className="p-3">
-              <div className="flex items-center space-x-2">
-                <Film className="w-4 h-4 text-green-400" />
-                <div>
-                  <p className="text-xs text-slate-400">Clips</p>
-                  <p className="text-sm font-semibold text-white">{clips.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <LibraryStats 
+          sourceVideosCount={sourceVideos.length}
+          clipsCount={clips.length}
+        />
 
         {/* Upload Section */}
         <VideoUploader onVideoUpload={handleVideoUpload} />
@@ -229,68 +211,20 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
       {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Generation Section */}
-        <div className="p-4 border-b border-slate-700/50 bg-slate-800/30">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-200">Generate Clips</h3>
-              {sourceVideos.length > 0 && (
-                <span className="text-xs text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">
-                  {sourceVideos.length} videos ready
-                </span>
-              )}
-            </div>
-            
-            {isGenerating && (
-              <div className="space-y-2">
-                <Progress 
-                  value={generationProgress} 
-                  className="h-2 bg-slate-700/50"
-                />
-                <p className="text-xs text-slate-200 text-center">
-                  Generating clips... {Math.round(generationProgress)}%
-                </p>
-              </div>
-            )}
-            
-            <div className="flex space-x-2">
-              <Button
-                onClick={generateClips}
-                disabled={sourceVideos.length === 0 || isGenerating}
-                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-medium"
-                size="sm"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Generate Clips
-              </Button>
-              <Button
-                onClick={onRandomizeAll}
-                disabled={clips.length === 0}
-                variant="outline"
-                size="sm"
-                className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
-              >
-                <Shuffle className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
+        {/* Generation Section with Configuration */}
+        <ClipGenerationPanel
+          sourceVideosCount={sourceVideos.length}
+          isGenerating={isGenerating}
+          generationProgress={generationProgress}
+          onGenerateClips={generateClips}
+          onRandomizeAll={onRandomizeAll}
+          clipsCount={clips.length}
+        />
 
         {/* Clips Grid */}
         <div className="flex-1 overflow-y-auto p-4">
           {clips.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Film className="w-8 h-8 text-slate-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-slate-300 mb-2">No clips yet</h3>
-              <p className="text-sm text-slate-500 mb-4">
-                Upload videos and generate clips to get started
-              </p>
-              <div className="space-y-3">
-                <VideoUploader onVideoUpload={handleVideoUpload} />
-              </div>
-            </div>
+            <EmptyLibraryState onVideoUpload={handleVideoUpload} />
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {clips.map((clip) => (
