@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -469,7 +468,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     }
   };
 
-  const handleQuickRandomize = async (duration: number) => {
+  const handleQuickRandomize = async (duration: number, includePictures: boolean = false) => {
     if (sourceVideos.length === 0) {
       toast({
         title: "No videos available",
@@ -482,30 +481,109 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     setIsGenerating(true);
     
     try {
-      const processor = (await import('@/services/optimizedVideoProcessor')).default.getInstance();
-      const targetClipCount = duration * 60;
-      
-      const randomClips = await processor.generateRandomClips(
-        sourceVideos,
-        targetClipCount,
-        1,
-        (progress, stage) => {
-          setGenerationProgress(progress);
-          console.log(`Quick randomize: ${progress}% - ${stage}`);
-        }
-      );
+      // Filter media based on includePictures setting
+      const mediaToProcess = includePictures 
+        ? sourceVideos 
+        : sourceVideos.filter(file => file.type.startsWith('video/'));
 
-      setClips(randomClips);
-      setTimelineClips(randomClips);
+      if (mediaToProcess.length === 0) {
+        const mediaType = includePictures ? 'media files' : 'videos';
+        toast({
+          title: `No ${mediaType} available`,
+          description: `Please upload some ${mediaType} first`,
+          variant: "destructive",
+        });
+        setIsGenerating(false);
+        return;
+      }
+
+      const targetClipCount = duration * 60;
+      const newClips: VideoClip[] = [];
       
-      // Auto-compile after generation
-      setTimeout(() => {
-        handleCompile();
-      }, 500);
+      console.log(`Creating ${targetClipCount} random 1-second clips from ${mediaToProcess.length} files (pictures: ${includePictures})`);
+      
+      // Create truly random selection by shuffling and repeating files as needed
+      const expandedFilePool = [];
+      const maxClipsPerFile = Math.ceil(targetClipCount / mediaToProcess.length) + 5;
+      
+      for (let i = 0; i < maxClipsPerFile; i++) {
+        expandedFilePool.push(...mediaToProcess);
+      }
+      
+      // Shuffle the expanded pool for true randomness
+      const shuffledPool = expandedFilePool.sort(() => Math.random() - 0.5);
+      
+      for (let i = 0; i < targetClipCount && i < shuffledPool.length; i++) {
+        const file = shuffledPool[i];
+        
+        if (file.type.startsWith('image/')) {
+          // Handle images - create a 1-second clip
+          const imageClip: VideoClip = {
+            id: `img-${Date.now()}-${i}-${Math.random()}`,
+            name: `Image ${i + 1}`,
+            sourceFile: file,
+            startTime: 0,
+            duration: 1, // Always 1-second for images
+            thumbnail: '',
+            position: i,
+          };
+          newClips.push(imageClip);
+        } else {
+          // Handle videos - same as before
+          const videoElement = document.createElement('video');
+          const objectUrl = URL.createObjectURL(file);
+          videoElement.src = objectUrl;
+          videoElement.preload = 'metadata';
+          
+          await new Promise((resolve) => {
+            videoElement.addEventListener('loadedmetadata', () => {
+              const videoDuration = videoElement.duration;
+              const startTime = Math.random() * Math.max(0, videoDuration - 1);
+              
+              const randomClip: VideoClip = {
+                id: `vid-${Date.now()}-${i}-${Math.random()}`,
+                name: `Clip ${i + 1}`,
+                sourceFile: file,
+                startTime,
+                duration: 1, // Always use 1-second clips
+                thumbnail: '',
+                position: i,
+              };
+              
+              newClips.push(randomClip);
+              URL.revokeObjectURL(objectUrl);
+              resolve(null);
+            });
+          });
+        }
+        
+        // Update progress
+        const progress = ((i + 1) / targetClipCount) * 50; // 50% for clip generation
+        setGenerationProgress(progress);
+        
+        // Small delay to prevent blocking
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+
+      console.log(`Generated ${newClips.length} clips (including images: ${includePictures})`);
+      
+      // Set both clips and timeline clips
+      setClips(newClips);
+      setTimelineClips(newClips);
+      
+      // Automatically start compilation after generation
+      setGenerationProgress(75);
+      console.log('Starting automatic compilation...');
+      
+      // Small delay before compilation
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Start compilation
+      await handleCompile();
       
       toast({
-        title: `${duration}-minute video generated!`,
-        description: `Created ${randomClips.length} optimized clips and starting compilation`,
+        title: `${duration}-minute video complete!`,
+        description: `Generated and compiled ${newClips.length} clips${includePictures ? ' (including images)' : ''} into a ${duration}-minute video`,
       });
 
     } catch (error) {
@@ -517,6 +595,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       });
     } finally {
       setIsGenerating(false);
+      setGenerationProgress(0);
     }
   };
 

@@ -6,13 +6,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, Settings, Zap, Play, Download } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Upload, Settings, Zap, Play, Download, Image } from 'lucide-react';
 
 interface WorkflowPanelProps {
   sourceVideos: File[];
   onVideoUpload: (files: File[]) => void;
   onBulkUpload: (files: File[]) => void;
-  onQuickRandomize: (duration: number) => void;
+  onQuickRandomize: (duration: number, includePictures?: boolean) => void;
   onCompile: () => void;
   isProcessing: boolean;
   processingProgress: number;
@@ -33,6 +34,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
 }) => {
   const [selectedDuration, setSelectedDuration] = useState<1 | 2 | 5>(1);
   const [activeWorkflow, setActiveWorkflow] = useState<'quick' | 'custom'>('quick');
+  const [includePictures, setIncludePictures] = useState(false);
 
   const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -48,6 +50,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
     }
   };
 
+  const handleQuickGenerate = () => {
+    onQuickRandomize(selectedDuration, includePictures);
+  };
+
   return (
     <Card className="bg-slate-800/50 border-slate-700">
       <CardHeader className="pb-3">
@@ -57,14 +63,14 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
         {/* Step 1: Upload */}
         <div className="space-y-3">
           <Label className="text-slate-300 text-sm font-medium block">
-            1. Upload Videos ({sourceVideos.length} loaded)
+            1. Upload Media ({sourceVideos.length} loaded)
           </Label>
           <div className="grid grid-cols-1 gap-2">
             <div>
               <input
                 type="file"
                 multiple
-                accept="video/*"
+                accept="video/*,image/*"
                 onChange={handleFileInput}
                 className="hidden"
                 id="video-files"
@@ -85,7 +91,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               <input
                 type="file"
                 multiple
-                accept="video/*"
+                accept="video/*,image/*"
                 onChange={handleDirectoryInput}
                 className="hidden"
                 id="video-directory"
@@ -115,6 +121,23 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
             <Label className="text-slate-300 text-sm font-medium block">
               2. Choose Workflow
             </Label>
+            
+            {/* Include Pictures Checkbox */}
+            <div className="flex items-center space-x-2 p-2 bg-slate-700/30 rounded">
+              <Checkbox 
+                id="include-pictures" 
+                checked={includePictures}
+                onCheckedChange={setIncludePictures}
+              />
+              <label 
+                htmlFor="include-pictures" 
+                className="text-xs text-slate-300 cursor-pointer flex items-center"
+              >
+                <Image className="w-3 h-3 mr-1" />
+                Include Pictures
+              </label>
+            </div>
+
             <Tabs value={activeWorkflow} onValueChange={(value) => setActiveWorkflow(value as 'quick' | 'custom')}>
               <TabsList className="grid w-full grid-cols-2 bg-slate-700/50 h-8">
                 <TabsTrigger value="quick" className="text-xs">Quick Random</TabsTrigger>
@@ -137,12 +160,12 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                   </SelectContent>
                 </Select>
                 <Button
-                  onClick={() => onQuickRandomize(selectedDuration)}
+                  onClick={handleQuickGenerate}
                   disabled={isProcessing}
                   className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-xs px-2 py-1 h-8"
                 >
                   <Zap className="w-3 h-3 mr-1" />
-                  {isProcessing ? 'Processing...' : `Generate ${selectedDuration}min`}
+                  {isProcessing ? 'Processing...' : `Generate & Compile ${selectedDuration}min`}
                 </Button>
               </TabsContent>
               
