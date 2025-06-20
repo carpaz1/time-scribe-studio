@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { VideoClip, SourceVideo, CompileRequest } from '@/types/timeline';
@@ -313,15 +314,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
-  const handleBulkProcessing = (generatedClips: VideoClip[], newSourceVideos: SourceVideo[]) => {
-    setClips(prev => [...prev, ...generatedClips]);
-    setSourceVideos(prev => [...prev, ...newSourceVideos]);
-    toast({
-      title: "Bulk processing complete",
-      description: `Generated ${generatedClips.length} clips from selected files`,
-    });
-  };
-
   // Create proper handler functions for ClipLibrary props
   const handleSourceVideosUpdate = (videos: SourceVideo[]) => {
     setSourceVideos(videos);
@@ -376,7 +368,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             onRandomizeAll={handleRandomizeAllWithToast}
             onVideoUpload={handleVideoUpload}
             onBulkUpload={handleBulkUpload}
-            onBulkProcessing={handleBulkProcessing}
           />
         </ResizablePanel>
 
