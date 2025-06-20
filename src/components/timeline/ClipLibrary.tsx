@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Settings, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -47,11 +48,15 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     setGenerationProgress(0);
 
     const generatedClips = [];
-    const totalClips = config.numClips * config.numVideos;
+    const videosToProcess = config.useAllVideos 
+      ? sourceVideos 
+      : sourceVideos.slice(0, Math.min(config.numVideos, sourceVideos.length));
+    
+    const totalClips = config.numClips * videosToProcess.length;
     let clipsGenerated = 0;
 
-    for (let i = 0; i < config.numVideos; i++) {
-      const video = sourceVideos[i % sourceVideos.length];
+    for (let i = 0; i < videosToProcess.length; i++) {
+      const video = videosToProcess[i];
       if (!video) continue;
 
       for (let j = 0; j < config.numClips; j++) {
@@ -61,12 +66,13 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         const newClip: VideoClip = {
           id: `clip-${Date.now()}-${Math.random()}`,
           name: `Clip ${i}-${j}`,
-          source: video.file,
+          sourceFile: video.file,
           startTime,
-          endTime,
+          endTime: endTime,
           duration: config.clipDuration,
-          sourceVideoId: video.id,
           thumbnail: video.thumbnail,
+          position: 0,
+          originalVideoId: video.id,
         };
         generatedClips.push(newClip);
         clipsGenerated++;
@@ -119,8 +125,8 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             <h2 className="text-lg font-semibold text-slate-200">Clip Library</h2>
           </div>
           <LibraryStats
-            clips={clips}
-            sourceVideos={sourceVideos}
+            sourceVideosCount={sourceVideos.length}
+            clipsCount={clips.length}
           />
         </div>
       </div>
@@ -158,7 +164,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
         {/* Clip List */}
         <div className="flex-1 overflow-auto">
           {clips.length === 0 ? (
-            <EmptyLibraryState sourceVideos={sourceVideos} />
+            <EmptyLibraryState onVideoUpload={onVideoUpload} />
           ) : (
             <ScrollArea className="h-full">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 p-4">
@@ -166,7 +172,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
                   <LibraryClipThumbnail
                     key={clip.id}
                     clip={clip}
-                    onClipAdd={() => onClipAdd(clip)}
+                    onAdd={() => onClipAdd(clip)}
                   />
                 ))}
               </div>

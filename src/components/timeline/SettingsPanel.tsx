@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { X, GitPull, Trash2, Download, AlertTriangle } from 'lucide-react';
+import { X, Download, Trash2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -146,7 +145,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
           <Card className="bg-slate-700/50 border-slate-600">
             <CardHeader>
               <CardTitle className="text-lg text-white flex items-center gap-2">
-                <GitPull className="w-5 h-5" />
+                <Download className="w-5 h-5" />
                 Application Updates
               </CardTitle>
             </CardHeader>
@@ -170,7 +169,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
                 disabled={isUpdating}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
-                <GitPull className="w-4 h-4 mr-2" />
+                <Download className="w-4 h-4 mr-2" />
                 {isUpdating ? 'Updating...' : 'Pull Latest Changes'}
               </Button>
             </CardContent>
