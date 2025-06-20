@@ -179,48 +179,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
     }
   };
 
-  const generateCustomSuggestion = async () => {
-    if (!customPrompt.trim()) {
-      toast({
-        title: "Enter a prompt",
-        description: "Type what you'd like the AI to help with",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (!hasAISetup && ollamaStatus !== 'running') {
-      toast({
-        title: "AI not available",
-        description: "Set up OpenAI API or start Ollama to use chat features",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      // For now, provide a helpful response based on the prompt
-      const customSuggestion = `AI Analysis for "${customPrompt}": Consider organizing your ${clips.length} clips with this approach in mind. Focus on storytelling flow, pacing, and audience engagement based on your specific request.`;
-      setSuggestions(prev => [customSuggestion, ...prev]);
-      setCustomPrompt('');
-      
-      toast({
-        title: "Custom suggestion added",
-        description: "AI has analyzed your request",
-      });
-    } catch (error) {
-      console.error('Custom suggestion failed:', error);
-      toast({
-        title: "Custom suggestion failed",
-        description: "Try again or check your AI settings",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const sendChatMessage = async () => {
     if (!currentMessage.trim() || isSending) return;
 
@@ -370,7 +328,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
         </div>
 
         {chatMode === 'suggestions' ? (
-          // ... keep existing code (suggestions mode content)
+          // Suggestions Mode
           <div className="space-y-4">
             {/* AI Provider Status */}
             <div className="space-y-2">
