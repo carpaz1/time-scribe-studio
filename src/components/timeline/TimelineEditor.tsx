@@ -322,6 +322,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
     });
   };
 
+  // Create proper handler functions for ClipLibrary props
+  const handleSourceVideosUpdate = (videos: SourceVideo[]) => {
+    setSourceVideos(videos);
+  };
+
   return (
     <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col overflow-hidden">
       {/* Enhanced Header with Glassmorphism */}
@@ -366,11 +371,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
             sourceVideos={sourceVideos}
             onClipAdd={handleClipAddWithToast}
             onClipsUpdate={setClips}
-            onSourceVideosUpdate={setSourceVideos}
+            onSourceVideosUpdate={handleSourceVideosUpdate}
             onClipsGenerated={handleClipsGenerated}
             onRandomizeAll={handleRandomizeAllWithToast}
             onVideoUpload={handleVideoUpload}
             onBulkUpload={handleBulkUpload}
+            onBulkProcessing={handleBulkProcessing}
           />
         </ResizablePanel>
 
