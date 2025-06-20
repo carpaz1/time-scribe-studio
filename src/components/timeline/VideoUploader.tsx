@@ -14,7 +14,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  // More permissive video format validation
+  // Support both video and image formats
   const SUPPORTED_VIDEO_FORMATS = [
     'video/mp4',
     'video/avi', 
@@ -24,8 +24,18 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     'video/x-msvideo'
   ];
 
+  const SUPPORTED_IMAGE_FORMATS = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/bmp',
+    'image/gif',
+    'image/webp'
+  ];
+
   const SUPPORTED_EXTENSIONS = [
-    '.mp4', '.avi', '.mov', '.webm', '.qt'
+    '.mp4', '.avi', '.mov', '.webm', '.qt',
+    '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'
   ];
 
   // Only block truly problematic formats
@@ -33,7 +43,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     '.wmv', '.flv'
   ];
 
-  const isValidVideoFile = (file: File): boolean => {
+  const isValidMediaFile = (file: File): boolean => {
     const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
     
     // Block only known problematic formats
@@ -43,7 +53,7 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     }
     
     // Check MIME type first
-    if (SUPPORTED_VIDEO_FORMATS.includes(file.type)) {
+    if (SUPPORTED_VIDEO_FORMATS.includes(file.type) || SUPPORTED_IMAGE_FORMATS.includes(file.type)) {
       return true;
     }
 
@@ -53,17 +63,17 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
     }
 
     // Allow files that might be videos but have generic MIME types
-    if (file.type.startsWith('video/') || extension.match(/\.(mp4|avi|mov|webm|mkv|m4v)$/i)) {
+    if (file.type.startsWith('video/') || file.type.startsWith('image/') || extension.match(/\.(mp4|avi|mov|webm|mkv|m4v|jpg|jpeg|png|bmp|gif|webp)$/i)) {
       return true;
     }
 
     return false;
   };
 
-  const validateVideoFile = async (file: File): Promise<boolean> => {
+  const validateMediaFile = async (file: File): Promise<boolean> => {
     return new Promise((resolve) => {
       // Basic format check
-      if (!isValidVideoFile(file)) {
+      if (!isValidMediaFile(file)) {
         console.warn('VideoUploader: Unsupported format:', file.name, file.type);
         return resolve(false);
       }
@@ -80,7 +90,13 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         return resolve(false);
       }
 
-      // Quick video validation with longer timeout for larger files
+      // Check if it's an image
+      if (file.type.startsWith('image/')) {
+        console.log('VideoUploader: Valid image file:', file.name);
+        return resolve(true);
+      }
+
+      // For videos, do quick validation
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.muted = true;
@@ -98,12 +114,11 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         cleanup();
         // Don't reject on timeout, assume it's valid
         resolve(true);
-      }, 5000); // Increased timeout
+      }, 5000);
 
       video.addEventListener('loadedmetadata', () => {
         clearTimeout(timeout);
         
-        // More permissive validation
         const isValid = video.duration > 0 && 
                         !isNaN(video.duration) && 
                         video.videoWidth > 0 && 
@@ -145,14 +160,14 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
         continue;
       }
       
-      const isValid = await validateVideoFile(file);
+      const isValid = await validateMediaFile(file);
       
       if (isValid) {
         validFiles.push(file);
         console.log('VideoUploader: Added valid file:', file.name);
       } else {
         const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-        const reason = BLOCKED_EXTENSIONS.includes(extension) ? 'Unsupported format' : 'Invalid video file';
+        const reason = BLOCKED_EXTENSIONS.includes(extension) ? 'Unsupported format' : 'Invalid media file';
         skippedFiles.push({ name: file.name, reason });
         console.log('VideoUploader: Skipped invalid file:', file.name, reason);
       }
@@ -171,14 +186,14 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
       console.log('VideoUploader: Successfully validated', validFiles.length, 'files');
       toast({
         title: "Files loaded",
-        description: `${validFiles.length} video files loaded successfully`,
+        description: `${validFiles.length} video and image files loaded successfully`,
         variant: "default",
       });
       onVideoUpload(validFiles);
     } else if (files.length > 0) {
       toast({
-        title: "No valid videos found",
-        description: "Please select supported video files",
+        title: "No valid videos or images found",
+        description: "Please select supported video and image files",
         variant: "destructive",
       });
     }
@@ -237,20 +252,20 @@ const VideoUploader: React.FC<VideoUploaderProps> = ({
           <Upload className="w-6 h-6 text-white" />
         </div>
         <p className="text-white font-medium mb-1">
-          {isDragOver ? 'Drop videos here' : 'Upload Videos'}
+          {isDragOver ? 'Drop media here' : 'Upload Videos & Images'}
         </p>
         <p className="text-xs text-slate-400">
           Drag & drop or click to browse
         </p>
         <p className="text-xs text-slate-500 mt-1">
-          Most video formats supported
+          Videos and images supported
         </p>
       </div>
       
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/*"
+        accept="video/*,image/*"
         multiple
         onChange={handleFileInputChange}
         className="hidden"

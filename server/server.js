@@ -500,22 +500,24 @@ async function processVideoCompilation(jobId, files, clipsData) {
       return;
     }
     
-    compilationProgress.set(jobId, { percent: 10, stage: 'Validating video files...' });
+    compilationProgress.set(jobId, { percent: 10, stage: 'Validating media files...' });
     console.log(`[PROCESS] Progress set to 10% for job: ${jobId}`);
 
-    // Pre-validate all files first
+    // Pre-validate all files first - support both videos and images
     const validatedFiles = [];
     for (const file of files) {
-      const isValid = await validateVideoFile(file.path);
-      if (isValid) {
-        validatedFiles.push(file);
+      const isVideo = await validateVideoFile(file.path);
+      const isImage = !isVideo && await validateImageFile(file.path);
+      
+      if (isVideo || isImage) {
+        validatedFiles.push({ ...file, isImage });
       } else {
         console.warn(`[PROCESS] Pre-validation failed for: ${file.originalname}`);
       }
     }
 
     if (validatedFiles.length === 0) {
-      const errorMsg = 'No valid video files found - all files are corrupted or unsupported';
+      const errorMsg = 'No valid media files found - all files are corrupted or unsupported';
       console.error(`[ERROR] ${errorMsg} for job: ${jobId}`);
       compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + errorMsg });
       return;
@@ -574,8 +576,8 @@ async function processVideoCompilation(jobId, files, clipsData) {
     compilationProgress.set(jobId, { 
       percent: 15, 
       stage: skippedCount > 0 
-        ? `Starting video processing (${skippedCount} files skipped)...`
-        : 'Starting video processing...'
+        ? `Starting media processing (${skippedCount} files skipped)...`
+        : 'Starting media processing...'
     });
 
     // Enhanced video settings for better compatibility and speed
@@ -643,10 +645,25 @@ async function processVideoCompilation(jobId, files, clipsData) {
   }
 }
 
-// Enhanced video validation function - less aggressive
+// Enhanced video validation function - fixed probe.kill() error
 async function validateVideoFile(filePath) {
   return new Promise((resolve) => {
-    const probe = ffmpeg.ffprobe(filePath, (err, metadata) => {
+    let probe;
+    const timeout = setTimeout(() => {
+      if (probe) {
+        try {
+          probe.kill();
+        } catch (e) {
+          // Ignore kill errors
+        }
+      }
+      console.warn(`[VALIDATE] Validation timeout for ${filePath}, assuming valid`);
+      resolve(true);
+    }, 8000);
+
+    probe = ffmpeg.ffprobe(filePath, (err, metadata) => {
+      clearTimeout(timeout);
+      
       if (err) {
         console.warn(`[VALIDATE] FFprobe error for ${filePath}:`, err.message);
         // Don't immediately reject, try to process anyway
@@ -693,13 +710,35 @@ async function validateVideoFile(filePath) {
         resolve(true);
       }
     });
+  });
+}
 
-    // Longer timeout for validation
-    setTimeout(() => {
-      probe.kill();
-      console.warn(`[VALIDATE] Validation timeout for ${filePath}, assuming valid`);
+// New function to validate image files
+async function validateImageFile(filePath) {
+  return new Promise((resolve) => {
+    const validExtensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp'];
+    const extension = path.extname(filePath).toLowerCase();
+    
+    if (!validExtensions.includes(extension)) {
+      resolve(false);
+      return;
+    }
+
+    // Check if file exists and has size
+    try {
+      const stats = fs.statSync(filePath);
+      if (stats.size < 1024) { // At least 1KB
+        console.warn(`[VALIDATE] Image file too small: ${filePath}`);
+        resolve(false);
+        return;
+      }
+      
+      console.log(`[VALIDATE] Valid image file: ${filePath} (${stats.size} bytes)`);
       resolve(true);
-    }, 8000);
+    } catch (error) {
+      console.warn(`[VALIDATE] Image validation error for ${filePath}:`, error);
+      resolve(false);
+    }
   });
 }
 
@@ -715,7 +754,7 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
       return;
     }
     
-    compilationProgress.set(jobId, { percent: 20, stage: 'Encoding clip for smooth playback...' });
+    compilationProgress.set(jobId, { percent: 20, stage: 'Encoding media for smooth playback...' });
     
     const file = files[clip.fileIndex];
     
@@ -731,30 +770,59 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
       reject(new Error('Processing timeout - operation took too long'));
     }, 600000); // 10 minutes timeout
     
-    const ffmpegProcess = ffmpeg(file.path)
-      .seekInput(Math.max(0, clip.startTime))
-      .duration(Math.max(0.1, clip.duration))
-      .videoCodec('libx264')
-      .audioCodec('aac')
-      .audioBitrate('128k') // Increased audio quality
-      .size(`${videoSettings.width}x${videoSettings.height}`)
-      .fps(30) // Back to 30fps for smoother playback
-      .aspect('16:9')
-      .outputOptions([
-        '-preset', 'medium', // Better quality than superfast
-        '-crf', '23', // Better quality (lower CRF)
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
-        '-avoid_negative_ts', 'make_zero',
-        '-fflags', '+genpts',
-        '-threads', '0', // Use all available threads
-        '-strict', '-2',
-        '-loglevel', 'warning', // More verbose logging
-        '-vsync', 'cfr', // Constant frame rate
-        '-r', '30' // Explicit frame rate
-      ])
-      .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
-      .output(outputPath);
+    let ffmpegProcess;
+    
+    if (file.isImage) {
+      // Process image as video with specified duration
+      ffmpegProcess = ffmpeg(file.path)
+        .inputOptions(['-loop', '1'])
+        .duration(Math.max(0.1, clip.duration))
+        .videoCodec('libx264')
+        .audioCodec('aac')
+        .audioBitrate('128k')
+        .size(`${videoSettings.width}x${videoSettings.height}`)
+        .fps(videoSettings.fps)
+        .aspect('16:9')
+        .outputOptions([
+          '-preset', 'medium',
+          '-crf', '23',
+          '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart',
+          '-threads', '0',
+          '-strict', '-2',
+          '-loglevel', 'warning',
+          '-vsync', 'cfr',
+          '-r', '24'
+        ])
+        .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
+        .output(outputPath);
+    } else {
+      // Process video normally
+      ffmpegProcess = ffmpeg(file.path)
+        .seekInput(Math.max(0, clip.startTime))
+        .duration(Math.max(0.1, clip.duration))
+        .videoCodec('libx264')
+        .audioCodec('aac')
+        .audioBitrate('128k')
+        .size(`${videoSettings.width}x${videoSettings.height}`)
+        .fps(30)
+        .aspect('16:9')
+        .outputOptions([
+          '-preset', 'medium',
+          '-crf', '23',
+          '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart',
+          '-avoid_negative_ts', 'make_zero',
+          '-fflags', '+genpts',
+          '-threads', '0',
+          '-strict', '-2',
+          '-loglevel', 'warning',
+          '-vsync', 'cfr',
+          '-r', '30'
+        ])
+        .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
+        .output(outputPath);
+    }
 
     // Store the process for cancellation
     activeJobs.set(jobId, { ffmpegProcess });
@@ -781,7 +849,7 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
       .on('end', () => {
         clearTimeout(timeout);
         activeJobs.delete(jobId);
-        console.log(`[SINGLE] Video compilation completed for job: ${jobId}`);
+        console.log(`[SINGLE] Media compilation completed for job: ${jobId}`);
         resolve();
       })
       .on('error', (err) => {
@@ -791,20 +859,20 @@ function processSingleClipSafe(jobId, clip, files, outputPath, videoSettings) {
         
         // Try to provide more helpful error messages
         if (err.message.includes('Invalid data found')) {
-          reject(new Error(`Video file appears corrupted: ${file.originalname}. Try with a different file.`));
+          reject(new Error(`Media file appears corrupted: ${file.originalname}. Try with a different file.`));
         } else if (err.message.includes('No such file')) {
           reject(new Error(`Source file not found: ${file.originalname}`));
         } else if (err.message.includes('Permission denied')) {
           reject(new Error(`Permission denied accessing file: ${file.originalname}`));
         } else {
-          reject(new Error(`Video encoding failed for ${file.originalname}. File may be in an unsupported format.`));
+          reject(new Error(`Media encoding failed for ${file.originalname}. File may be in an unsupported format.`));
         }
       })
       .run();
   });
 }
 
-// Fixed processing for multiple clips - removed conflicting filters
+// Enhanced processing for multiple clips - support images
 async function processMultipleClipsSafe(jobId, validClips, files, outputPath, videoSettings) {
   try {
     // Check for cancellation
@@ -814,7 +882,7 @@ async function processMultipleClipsSafe(jobId, validClips, files, outputPath, vi
       throw new Error('Job cancelled');
     }
     
-    compilationProgress.set(jobId, { percent: 20, stage: 'Creating video list...' });
+    compilationProgress.set(jobId, { percent: 20, stage: 'Creating media list...' });
     
     const tempDir = path.join(__dirname, 'temp');
     if (!fs.existsSync(tempDir)) {
@@ -839,7 +907,7 @@ async function processMultipleClipsSafe(jobId, validClips, files, outputPath, vi
       const file = files[clip.fileIndex];
       const tempClipPath = path.join(tempDir, `temp_clip_${jobId}_${i}.mp4`);
       
-      console.log(`[MULTI] Processing clip ${i + 1}/${validClips.length} for job: ${jobId}`);
+      console.log(`[MULTI] Processing clip ${i + 1}/${validClips.length} for job: ${jobId} (${file.isImage ? 'Image' : 'Video'})`);
       
       try {
         await new Promise((resolve, reject) => {
@@ -847,26 +915,51 @@ async function processMultipleClipsSafe(jobId, validClips, files, outputPath, vi
             reject(new Error(`Clip ${i} processing timeout`));
           }, 180000); // 3 minutes per clip
           
-          const ffmpegProcess = ffmpeg(file.path)
-            .seekInput(Math.max(0, clip.startTime))
-            .duration(Math.max(0.1, clip.duration))
-            .videoCodec('libx264')
-            .audioCodec('aac')
-            .audioBitrate('96k')
-            .size(`${videoSettings.width}x${videoSettings.height}`)
-            .fps(videoSettings.fps)
-            .outputOptions([
-              '-preset', 'superfast',
-              '-crf', '30',
-              '-pix_fmt', 'yuv420p',
-              '-avoid_negative_ts', 'make_zero',
-              '-fflags', '+genpts',
-              '-threads', '2',
-              '-strict', '-2',
-              '-loglevel', 'error'
-            ])
-            .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
-            .output(tempClipPath);
+          let ffmpegProcess;
+          
+          if (file.isImage) {
+            // Process image with specified duration
+            ffmpegProcess = ffmpeg(file.path)
+              .inputOptions(['-loop', '1'])
+              .duration(Math.max(0.1, clip.duration))
+              .videoCodec('libx264')
+              .audioCodec('aac')
+              .audioBitrate('96k')
+              .size(`${videoSettings.width}x${videoSettings.height}`)
+              .fps(videoSettings.fps)
+              .outputOptions([
+                '-preset', 'superfast',
+                '-crf', '30',
+                '-pix_fmt', 'yuv420p',
+                '-threads', '2',
+                '-strict', '-2',
+                '-loglevel', 'error'
+              ])
+              .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
+              .output(tempClipPath);
+          } else {
+            // Process video normally
+            ffmpegProcess = ffmpeg(file.path)
+              .seekInput(Math.max(0, clip.startTime))
+              .duration(Math.max(0.1, clip.duration))
+              .videoCodec('libx264')
+              .audioCodec('aac')
+              .audioBitrate('96k')
+              .size(`${videoSettings.width}x${videoSettings.height}`)
+              .fps(videoSettings.fps)
+              .outputOptions([
+                '-preset', 'superfast',
+                '-crf', '30',
+                '-pix_fmt', 'yuv420p',
+                '-avoid_negative_ts', 'make_zero',
+                '-fflags', '+genpts',
+                '-threads', '2',
+                '-strict', '-2',
+                '-loglevel', 'error'
+              ])
+              .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
+              .output(tempClipPath);
+          }
 
           // Store the process for cancellation
           activeJobs.set(jobId, { ffmpegProcess });
@@ -878,7 +971,7 @@ async function processMultipleClipsSafe(jobId, validClips, files, outputPath, vi
               const progress = 30 + ((i + 1) / validClips.length) * 50;
               compilationProgress.set(jobId, { 
                 percent: progress, 
-                stage: `Processed clip ${i + 1}/${validClips.length}${skippedClips > 0 ? ` (${skippedClips} skipped)` : ''}` 
+                stage: `Processed ${file.isImage ? 'image' : 'clip'} ${i + 1}/${validClips.length}${skippedClips > 0 ? ` (${skippedClips} skipped)` : ''}` 
               });
               resolve();
             })
@@ -892,7 +985,7 @@ async function processMultipleClipsSafe(jobId, validClips, files, outputPath, vi
               const progress = 30 + ((i + 1) / validClips.length) * 50;
               compilationProgress.set(jobId, { 
                 percent: progress, 
-                stage: `Processed clip ${i + 1}/${validClips.length} (${skippedClips} skipped)` 
+                stage: `Processed ${file.isImage ? 'image' : 'clip'} ${i + 1}/${validClips.length} (${skippedClips} skipped)` 
               });
               resolve();
             })
