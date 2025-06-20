@@ -15,6 +15,7 @@ import StatusBar from './StatusBar';
 import SettingsPanel from './SettingsPanel';
 import EditorHeader from './EditorHeader';
 import VideoPreview from './VideoPreview';
+import AIAssistant from './AIAssistant';
 
 interface TimelineEditorProps {
   onExport?: (data: CompileRequest) => void;
@@ -27,7 +28,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     clips: [] as VideoClip[],
     timelineClips: [] as VideoClip[],
     totalDuration: 60,
-    zoom: 100, // Start at 1x (100%)
+    zoom: 1, // Fixed: Start at 1x (not 100x)
     playheadPosition: 0,
     isPlaying: false,
     isDragging: false,
@@ -102,15 +103,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
 
   // Zoom controls
   const handleZoomIn = useCallback(() => {
-    updateState({ zoom: Math.min(state.zoom + 25, 500) });
+    updateState({ zoom: Math.min(state.zoom * 1.25, 5) });
   }, [state.zoom, updateState]);
 
   const handleZoomOut = useCallback(() => {
-    updateState({ zoom: Math.max(state.zoom - 25, 25) });
+    updateState({ zoom: Math.max(state.zoom / 1.25, 0.25) });
   }, [state.zoom, updateState]);
 
   const handleReset = useCallback(() => {
-    updateState({ zoom: 100, playheadPosition: 0 });
+    updateState({ zoom: 1, playheadPosition: 0 });
   }, [updateState]);
 
   const handleClearTimeline = useCallback(() => {
@@ -120,7 +121,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   // Enhanced clip generation with better performance
   const generateClipsBatch = useCallback(async (videos: File[], clipCount: number, clipDuration: number = 1): Promise<VideoClip[]> => {
     const clips: VideoClip[] = [];
-    const batchSize = 12; // Increased batch size
+    const batchSize = 12;
     
     const videoElements = new Map<string, HTMLVideoElement>();
     
@@ -245,7 +246,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         processingStage: 'Starting smart compilation...'
       });
       
-      // Auto-compile with optimized settings
       updateProcessing({
         isCompiling: true,
         compilationProgress: 0,
@@ -260,8 +260,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         preserveAudio: true,
         audioCodec: 'aac',
         videoCodec: 'h264',
-        smartTransitions: true, // New feature
-        autoColorCorrection: true, // New feature
+        smartTransitions: true,
+        autoColorCorrection: true,
       };
 
       const result = await VideoCompilerService.compileTimeline(
@@ -424,6 +424,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     VideoCompilerService.exportTimelineJSON(state.timelineClips, state.totalDuration, state.zoom, state.playheadPosition);
   }, [state]);
 
+  const handleAISuggestion = useCallback((suggestion: string) => {
+    console.log('AI Suggestion applied:', suggestion);
+    // Could implement suggestion logic here
+  }, []);
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800">
@@ -461,6 +466,12 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
                 processingProgress={currentProgress}
                 processingStage={currentStage}
                 onCancelProcessing={handleCancelProcessing}
+              />
+
+              {/* AI Assistant */}
+              <AIAssistant
+                clips={state.clips}
+                onApplySuggestion={handleAISuggestion}
               />
 
               {/* Enhanced Generated Clips Pool */}
