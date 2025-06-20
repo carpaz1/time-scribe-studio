@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -43,12 +42,29 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   const [compilationProgress, setCompilationProgress] = useState(0);
   const [compilationStage, setCompilationStage] = useState('');
 
+  // Configuration state
+  const [config, setConfig] = useState({
+    numClips: 3,
+    clipDuration: 5,
+    randomSelection: true,
+    videoSelectionMode: 'all' as const,
+    numVideos: Math.min(20, sourceVideos.length),
+  });
+
   const { progress, startProgress, updateProgress, completeProgress, resetProgress } = useProgressTracker();
 
   const nextClipId = useRef(1);
 
   const handleFilesSelected = (files: File[]) => {
-    setSourceVideos(prevFiles => [...prevFiles, ...files]);
+    setSourceVideos(prevFiles => {
+      const newFiles = [...prevFiles, ...files];
+      // Update config when videos change
+      setConfig(prev => ({
+        ...prev,
+        numVideos: Math.min(prev.numVideos, newFiles.length)
+      }));
+      return newFiles;
+    });
   };
 
   const handleRemoveFile = (name: string) => {
@@ -60,6 +76,10 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     setClips([]);
     setTimelineClips([]);
     resetProgress();
+  };
+
+  const handleConfigChange = (newConfig: any) => {
+    setConfig(newConfig);
   };
 
   const togglePlayback = useCallback(() => {
@@ -160,7 +180,9 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     }
   };
 
-  const handleGenerateClips = async (config: any) => {
+  const handleGenerateClips = async (generationConfig?: any) => {
+    const configToUse = generationConfig || config;
+    
     if (sourceVideos.length === 0) {
       toast({
         title: "No videos uploaded",
@@ -173,16 +195,15 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     setIsGenerating(true);
     setGenerationProgress(0);
 
-    const videosToProcess = config.videoSelectionMode === 'all' ? sourceVideos : sourceVideos.slice(0, config.numVideos);
-    const totalClips = videosToProcess.length * config.numClips;
+    const videosToProcess = configToUse.videoSelectionMode === 'all' ? sourceVideos : sourceVideos.slice(0, configToUse.numVideos);
+    const totalClips = videosToProcess.length * configToUse.numClips;
 
     startProgress(totalClips, 'Generating clips...');
 
     try {
       let currentClipCount = 0;
       for (const video of videosToProcess) {
-        for (let i = 0; i < config.numClips; i++) {
-          // Create a temporary video element to get duration
+        for (let i = 0; i < configToUse.numClips; i++) {
           const videoElement = document.createElement('video');
           const objectUrl = URL.createObjectURL(video);
           videoElement.src = objectUrl;
@@ -190,14 +211,14 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
           await new Promise((resolve) => {
             videoElement.addEventListener('loadedmetadata', () => {
               const videoDuration = videoElement.duration;
-              const startTime = Math.random() * Math.max(0, videoDuration - config.clipDuration);
+              const startTime = Math.random() * Math.max(0, videoDuration - configToUse.clipDuration);
               
               const clip: VideoClip = {
                 id: nextClipId.current.toString(),
                 name: `Clip ${nextClipId.current} from ${video.name}`,
                 sourceFile: video,
                 startTime: startTime,
-                duration: config.clipDuration,
+                duration: configToUse.clipDuration,
                 position: 0,
                 thumbnail: '',
               };
@@ -355,74 +376,66 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         />
         
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
-          <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
-            <SidebarSection
-              title="1. Upload Videos"
-              isActive={activeStep === 'upload'}
-              onToggle={() => setActiveStep(activeStep === 'upload' ? null : 'upload')}
-            >
-              <VideoUploadStep
-                sourceVideos={sourceVideos}
-                onVideoUpload={handleFilesSelected}
-                onBulkUpload={handleFilesSelected}
-                onDirectRandomize={handleRandomizeAll}
-              />
-            </SidebarSection>
+          {/* Sidebar - Made wider and scrollable */}
+          <div className="w-96 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto">
+              <SidebarSection
+                title="1. Upload Videos"
+                isActive={activeStep === 'upload'}
+                onToggle={() => setActiveStep(activeStep === 'upload' ? null : 'upload')}
+              >
+                <VideoUploadStep
+                  sourceVideos={sourceVideos}
+                  onVideoUpload={handleFilesSelected}
+                  onBulkUpload={handleFilesSelected}
+                  onDirectRandomize={handleRandomizeAll}
+                />
+              </SidebarSection>
 
-            <SidebarSection
-              title="2. Configure"
-              isActive={activeStep === 'configure'}
-              onToggle={() => setActiveStep(activeStep === 'configure' ? null : 'configure')}
-            >
-              <ConfigurationStep
-                config={{
-                  numClips: 3,
-                  clipDuration: 5,
-                  randomSelection: true,
-                  videoSelectionMode: 'all' as const,
-                  numVideos: Math.min(20, sourceVideos.length),
-                }}
-                sourceVideosCount={sourceVideos.length}
-                onConfigChange={() => {}}
-              />
-            </SidebarSection>
+              <SidebarSection
+                title="2. Configure Settings"
+                isActive={activeStep === 'configure'}
+                onToggle={() => setActiveStep(activeStep === 'configure' ? null : 'configure')}
+              >
+                <ConfigurationStep
+                  config={config}
+                  sourceVideosCount={sourceVideos.length}
+                  onConfigChange={handleConfigChange}
+                />
+              </SidebarSection>
 
-            <SidebarSection
-              title="3. Generate & Randomize"
-              isActive={activeStep === 'randomize'}
-              onToggle={() => setActiveStep(activeStep === 'randomize' ? null : 'randomize')}
-            >
-              <RandomizeStep
-                onGenerateClips={handleGenerateClips}
-                onRandomizeAll={handleRandomizeAll}
-                onRandomizeTimed={handleRandomizeTimed}
-                onCancelProcessing={handleCancelProcessing}
-                isGenerating={isGenerating}
-                generationProgress={generationProgress}
-                config={{
-                  numClips: 3,
-                  clipDuration: 5,
-                  randomSelection: true,
-                  videoSelectionMode: 'all' as const,
-                  numVideos: Math.min(20, sourceVideos.length),
-                }}
-              />
-            </SidebarSection>
+              <SidebarSection
+                title="3. Generate & Randomize"
+                isActive={activeStep === 'randomize'}
+                onToggle={() => setActiveStep(activeStep === 'randomize' ? null : 'randomize')}
+              >
+                <RandomizeStep
+                  onGenerateClips={handleGenerateClips}
+                  onRandomizeAll={handleRandomizeAll}
+                  onRandomizeTimed={handleRandomizeTimed}
+                  onCancelProcessing={handleCancelProcessing}
+                  isGenerating={isGenerating}
+                  generationProgress={generationProgress}
+                  config={config}
+                />
+              </SidebarSection>
 
-            <ClipLibrary
-              clips={clips}
-              sourceVideos={[]}
-              timelineClips={timelineClips}
-              onClipAdd={handleAddToTimeline}
-              onClipsUpdate={setClips}
-              onSourceVideosUpdate={() => {}}
-              onClipsGenerated={setClips}
-              onRandomizeAll={handleRandomizeAll}
-              onVideoUpload={handleFilesSelected}
-              onBulkUpload={handleFilesSelected}
-              progressTracker={progress}
-            />
+              <div className="border-t border-slate-700/50">
+                <ClipLibrary
+                  clips={clips}
+                  sourceVideos={[]}
+                  timelineClips={timelineClips}
+                  onClipAdd={handleAddToTimeline}
+                  onClipsUpdate={setClips}
+                  onSourceVideosUpdate={() => {}}
+                  onClipsGenerated={setClips}
+                  onRandomizeAll={handleRandomizeAll}
+                  onVideoUpload={handleFilesSelected}
+                  onBulkUpload={handleFilesSelected}
+                  progressTracker={progress}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Main Content */}
@@ -542,4 +555,3 @@ const SidebarSection: React.FC<SidebarSectionProps> = ({ title, children, isActi
     </div>
   );
 };
-
