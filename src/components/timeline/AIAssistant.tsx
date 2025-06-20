@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Brain, Zap, Sparkles, Settings, Cpu, MessageSquare, AlertCircle } from 'lucide-react';
+import { Brain, Zap, Sparkles, Settings, Cpu, MessageSquare, AlertCircle, CheckCircle } from 'lucide-react';
 import { VideoClip } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
+import AIIntegrationService from '@/services/aiIntegration';
 
 interface AIAssistantProps {
   clips: VideoClip[];
@@ -21,6 +22,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
   const [aiProviders, setAiProviders] = useState<string[]>([]);
   const [customPrompt, setCustomPrompt] = useState('');
   const [hasAISetup, setHasAISetup] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -28,20 +30,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
   }, []);
 
   const initializeServices = async () => {
+    setConnectionStatus('checking');
+    
     try {
-      // Check for saved AI configurations
-      const openaiKey = localStorage.getItem('openai_api_key');
-      const ollamaUrl = localStorage.getItem('ollama_url');
-      
-      if (openaiKey || ollamaUrl) {
-        setHasAISetup(true);
-        const providers = [];
-        if (openaiKey) providers.push('OpenAI GPT');
-        if (ollamaUrl) providers.push('Local LLM');
-        setAiProviders(providers);
-      }
-
-      // Initialize GPU info safely
+      // Initialize GPU info
       try {
         const { default: GPUAccelerator } = await import('@/services/gpuAccelerator');
         const gpu = GPUAccelerator.getInstance();
@@ -51,8 +43,20 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
         console.warn('GPU acceleration not available:', error);
         setGpuInfo('CPU Only');
       }
+
+      // Initialize AI service
+      const ai = AIIntegrationService.getInstance();
+      const providers = ai.getAvailableProviders();
+      const hasProviders = ai.hasProviders();
+      
+      setAiProviders(providers);
+      setHasAISetup(hasProviders);
+      setConnectionStatus(hasProviders ? 'connected' : 'disconnected');
+      
+      console.log('AI Assistant: Initialized with providers:', providers);
     } catch (error) {
       console.error('Error initializing AI services:', error);
+      setConnectionStatus('disconnected');
       setGpuInfo('CPU Only');
     }
   };
@@ -70,7 +74,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
     if (!hasAISetup) {
       toast({
         title: "AI not configured",
-        description: "Set up OpenAI or Ollama in Settings first",
+        description: "Set up OpenAI or Ollama in Settings → AI Integration first",
         variant: "destructive",
       });
       return;
@@ -78,20 +82,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
     
     setLoading(true);
     try {
-      // Try to use the AI service
-      const { default: AIIntegrationService } = await import('@/services/aiIntegration');
       const ai = AIIntegrationService.getInstance();
-      
-      // Re-initialize providers from saved settings
-      const openaiKey = localStorage.getItem('openai_api_key');
-      const ollamaUrl = localStorage.getItem('ollama_url');
-      
-      if (openaiKey) {
-        ai.addOpenAIProvider(openaiKey);
-      }
-      if (ollamaUrl) {
-        ai.addLocalLLMProvider(ollamaUrl);
-      }
+      console.log('AI Assistant: Requesting suggestions for', clips.length, 'clips');
       
       const newSuggestions = await ai.generateSmartSuggestions(clips);
       setSuggestions(newSuggestions);
@@ -102,23 +94,44 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
           description: "AI service may be unavailable. Check your settings.",
           variant: "destructive",
         });
+      } else {
+        toast({
+          title: "AI suggestions generated",
+          description: `Generated ${newSuggestions.length} editing suggestions`,
+        });
       }
     } catch (error) {
       console.error('Failed to generate suggestions:', error);
       toast({
         title: "AI suggestion failed",
-        description: "Check your AI configuration in Settings",
+        description: error.message || "Check your AI configuration in Settings",
         variant: "destructive",
       });
       
-      // Fallback suggestions
-      setSuggestions([
-        "Try varying clip lengths for dynamic pacing",
-        "Add smooth transitions between scenes",
-        "Group similar content together",
-        "Use shorter clips for high-energy sections",
-        "Create a strong opening and closing"
-      ]);
+      // Show specific error-based fallback suggestions
+      if (error.message?.includes('Ollama')) {
+        setSuggestions([
+          "Ollama Error: Make sure Ollama is running (ollama serve)",
+          "Pull a model first: ollama pull llama2",
+          "Check that Ollama is accessible at the configured URL",
+          "Verify firewall settings aren't blocking the connection"
+        ]);
+      } else if (error.message?.includes('OpenAI')) {
+        setSuggestions([
+          "OpenAI Error: Check your API key is valid",
+          "Verify you have API credits available",
+          "Check your internet connection",
+          "Try refreshing and testing the connection in Settings"
+        ]);
+      } else {
+        setSuggestions([
+          "Try varying clip lengths for dynamic pacing",
+          "Add smooth transitions between scenes",
+          "Group similar content together",
+          "Use shorter clips for high-energy sections",
+          "Create a strong opening and closing"
+        ]);
+      }
     } finally {
       setLoading(false);
     }
@@ -134,10 +147,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
       return;
     }
     
+    if (!hasAISetup) {
+      toast({
+        title: "AI not configured",
+        description: "Set up OpenAI or Ollama in Settings first",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setLoading(true);
     try {
-      // Simple custom suggestion for now
-      const customSuggestion = `AI Analysis: Based on "${customPrompt}" - Consider organizing your ${clips.length} clips with this approach in mind. Focus on storytelling flow and audience engagement.`;
+      // For now, provide a helpful response based on the prompt
+      const customSuggestion = `AI Analysis for "${customPrompt}": Consider organizing your ${clips.length} clips with this approach in mind. Focus on storytelling flow, pacing, and audience engagement based on your specific request.`;
       setSuggestions(prev => [customSuggestion, ...prev]);
       setCustomPrompt('');
       
@@ -157,16 +179,44 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
     }
   };
 
+  const getStatusIcon = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return <CheckCircle className="w-4 h-4 text-green-400" />;
+      case 'disconnected':
+        return <AlertCircle className="w-4 h-4 text-red-400" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-yellow-400" />;
+    }
+  };
+
+  const getStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected';
+      case 'disconnected':
+        return 'Not Connected';
+      default:
+        return 'Checking...';
+    }
+  };
+
   return (
     <Card className="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 border-purple-500/30">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg text-white flex items-center">
           <Brain className="w-5 h-5 mr-2 text-purple-400" />
           AI Video Assistant
-          <Badge variant="secondary" className="ml-2 text-xs">
-            <Cpu className="w-3 h-3 mr-1" />
-            {gpuInfo}
-          </Badge>
+          <div className="ml-auto flex items-center space-x-2">
+            <Badge variant="secondary" className="text-xs">
+              <Cpu className="w-3 h-3 mr-1" />
+              {gpuInfo}
+            </Badge>
+            <Badge variant={connectionStatus === 'connected' ? 'default' : 'destructive'} className="text-xs">
+              {getStatusIcon()}
+              <span className="ml-1">{getStatusText()}</span>
+            </Badge>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -204,7 +254,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
             onClick={generateCustomSuggestion} 
             className="w-full" 
             size="sm"
-            disabled={!customPrompt.trim() || loading}
+            disabled={!customPrompt.trim() || loading || !hasAISetup}
           >
             <MessageSquare className="w-4 h-4 mr-1" />
             Ask AI
@@ -215,7 +265,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ clips, onApplySuggestion }) =
         <Button 
           onClick={generateSuggestions} 
           className="w-full bg-gradient-to-r from-purple-600 to-indigo-600" 
-          disabled={clips.length === 0 || loading}
+          disabled={clips.length === 0 || loading || !hasAISetup}
         >
           <Zap className="w-4 h-4 mr-1" />
           {loading ? 'AI Thinking...' : 'Generate Smart Suggestions'}

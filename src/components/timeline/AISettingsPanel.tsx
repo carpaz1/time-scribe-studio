@@ -88,28 +88,70 @@ const AISettingsPanel: React.FC = () => {
   const testOllama = async () => {
     setTestingOllama(true);
     try {
-      const response = await fetch(`${ollamaUrl}/api/tags`);
+      console.log('Testing Ollama connection at:', ollamaUrl);
       
-      if (response.ok) {
-        setOllamaStatus('success');
-        localStorage.setItem('ollama_url', ollamaUrl);
-        
-        const ai = AIIntegrationService.getInstance();
-        ai.addLocalLLMProvider(ollamaUrl);
-        setAvailableProviders(ai.getAvailableProviders());
-        
-        toast({
-          title: "Ollama Connected",
-          description: "Successfully connected to local Ollama instance",
-        });
-      } else {
-        throw new Error(`Connection failed`);
+      // Test basic connection
+      const response = await fetch(`${ollamaUrl}/api/tags`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Ollama server returned ${response.status}. Make sure Ollama is running with 'ollama serve'`);
       }
+      
+      const data = await response.json();
+      console.log('Ollama models response:', data);
+      
+      if (!data.models || data.models.length === 0) {
+        setOllamaStatus('error');
+        toast({
+          title: "No Models Available",
+          description: "Ollama is running but no models are installed. Run 'ollama pull llama2' to install a model.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Test actual model generation
+      const testModel = data.models[0].name;
+      console.log('Testing model generation with:', testModel);
+      
+      const testResponse = await fetch(`${ollamaUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: testModel,
+          prompt: 'Say "Hello" in one word.',
+          stream: false,
+          options: { max_tokens: 10 }
+        })
+      });
+      
+      if (!testResponse.ok) {
+        throw new Error(`Model test failed: ${testResponse.status}`);
+      }
+      
+      const testData = await testResponse.json();
+      console.log('Ollama test generation successful:', testData);
+      
+      setOllamaStatus('success');
+      localStorage.setItem('ollama_url', ollamaUrl);
+      
+      const ai = AIIntegrationService.getInstance();
+      ai.addLocalLLMProvider(ollamaUrl);
+      setAvailableProviders(ai.getAvailableProviders());
+      
+      toast({
+        title: "Ollama Connected Successfully",
+        description: `Connected with ${data.models.length} model(s): ${data.models.map(m => m.name.split(':')[0]).join(', ')}`,
+      });
     } catch (error) {
+      console.error('Ollama connection error:', error);
       setOllamaStatus('error');
       toast({
         title: "Ollama Connection Failed",
-        description: "Make sure Ollama is running and accessible",
+        description: error.message || "Make sure Ollama is running and accessible",
         variant: "destructive",
       });
     } finally {
