@@ -1,3 +1,4 @@
+
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
@@ -314,13 +315,23 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
     ffmpeg(file.path)
       .seekInput(Math.max(0, clip.startTime))
       .duration(Math.max(0.1, clip.duration))
+      .videoCodec('libx264')
       .audioCodec('aac')
-      .audioBitrate('96k') // Reduced for speed
+      .audioBitrate('96k')
       .size(`${videoSettings.width}x${videoSettings.height}`)
       .fps(videoSettings.fps)
       .aspect('16:9')
-      .autopad(true, 'black')
-      .outputOptions(fastOptions)
+      .outputOptions([
+        '-preset', 'superfast',
+        '-crf', '30',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts',
+        '-threads', '2',
+        '-strict', '-2',
+        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black'
+      ])
       .output(outputPath)
       .on('start', (commandLine) => {
         console.log(`[SINGLE] FFmpeg started for job ${jobId}:`, commandLine);
@@ -349,7 +360,7 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
   });
 }
 
-// Simplified processing for multiple clips - use concat protocol for speed
+// Fixed processing for multiple clips - removed conflicting filters
 async function processMultipleClipsFast(jobId, validClips, files, outputPath, videoSettings, fastOptions) {
   try {
     compilationProgress.set(jobId, { percent: 20, stage: 'Creating video list...' });
@@ -359,84 +370,113 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Create concat file list directly without pre-processing
-    const concatListPath = path.join(tempDir, `concat_list_${jobId}.txt`);
-    const concatContent = validClips.map((clip, index) => {
-      const file = files[clip.fileIndex];
-      return `file '${file.path.replace(/\\/g, '/')}'`;
-    }).join('\n');
+    compilationProgress.set(jobId, { percent: 30, stage: 'Processing clips sequentially...' });
+
+    // Process clips one by one and then concatenate
+    const processedClipPaths = [];
     
+    for (let i = 0; i < validClips.length; i++) {
+      const clip = validClips[i];
+      const file = files[clip.fileIndex];
+      const tempClipPath = path.join(tempDir, `temp_clip_${jobId}_${i}.mp4`);
+      
+      console.log(`[MULTI] Processing clip ${i + 1}/${validClips.length} for job: ${jobId}`);
+      
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error(`Clip ${i} processing timeout`));
+        }, 180000); // 3 minutes per clip
+        
+        ffmpeg(file.path)
+          .seekInput(Math.max(0, clip.startTime))
+          .duration(Math.max(0.1, clip.duration))
+          .videoCodec('libx264')
+          .audioCodec('aac')
+          .audioBitrate('96k')
+          .size(`${videoSettings.width}x${videoSettings.height}`)
+          .fps(videoSettings.fps)
+          .outputOptions([
+            '-preset', 'superfast',
+            '-crf', '30',
+            '-pix_fmt', 'yuv420p',
+            '-avoid_negative_ts', 'make_zero',
+            '-fflags', '+genpts',
+            '-threads', '2',
+            '-strict', '-2',
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black'
+          ])
+          .output(tempClipPath)
+          .on('end', () => {
+            clearTimeout(timeout);
+            processedClipPaths.push(tempClipPath);
+            const progress = 30 + ((i + 1) / validClips.length) * 50;
+            compilationProgress.set(jobId, { 
+              percent: progress, 
+              stage: `Processed clip ${i + 1}/${validClips.length}` 
+            });
+            resolve();
+          })
+          .on('error', (err) => {
+            clearTimeout(timeout);
+            reject(new Error(`Clip ${i} processing failed: ${err.message}`));
+          })
+          .run();
+      });
+    }
+
+    // Create concat file
+    const concatListPath = path.join(tempDir, `concat_list_${jobId}.txt`);
+    const concatContent = processedClipPaths.map(path => `file '${path.replace(/\\/g, '/')}'`).join('\n');
     fs.writeFileSync(concatListPath, concatContent);
-    console.log(`[FAST] Job ${jobId}: Direct concat list created`);
 
-    compilationProgress.set(jobId, { percent: 30, stage: 'Fast encoding multiple clips...' });
+    compilationProgress.set(jobId, { percent: 85, stage: 'Concatenating clips...' });
 
-    // Direct concatenation with clipping in one pass
+    // Concatenate all processed clips
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Processing timeout - operation took too long'));
-      }, 600000); // 10 minutes timeout
+        reject(new Error('Concatenation timeout'));
+      }, 300000); // 5 minutes timeout
 
-      let ffmpegCommand = ffmpeg();
-      
-      // Add each clip with its timing
-      validClips.forEach((clip, index) => {
-        const file = files[clip.fileIndex];
-        ffmpegCommand = ffmpegCommand.input(file.path);
-        if (clip.startTime > 0) {
-          ffmpegCommand = ffmpegCommand.inputOptions(`-ss ${clip.startTime}`);
-        }
-        if (clip.duration > 0) {
-          ffmpegCommand = ffmpegCommand.inputOptions(`-t ${clip.duration}`);
-        }
-      });
-
-      // Create filter complex for concatenation
-      const filterComplex = validClips.map((_, index) => `[${index}:v][${index}:a]`).join('') + 
-                           `concat=n=${validClips.length}:v=1:a=1[outv][outa]`;
-
-      ffmpegCommand
-        .complexFilter(filterComplex)
-        .outputOptions(['-map', '[outv]', '-map', '[outa]'])
-        .audioCodec('aac')
-        .audioBitrate('96k')
-        .size(`${videoSettings.width}x${videoSettings.height}`)
-        .fps(videoSettings.fps)
-        .outputOptions(fastOptions)
+      ffmpeg()
+        .input(concatListPath)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .videoCodec('copy')
+        .audioCodec('copy')
         .output(outputPath)
         .on('start', (commandLine) => {
-          console.log(`[FAST] Job ${jobId}: FFmpeg fast concat started`);
-          compilationProgress.set(jobId, { percent: 40, stage: 'Fast encoding...' });
+          console.log(`[MULTI] Final concat started for job ${jobId}`);
         })
         .on('progress', (progress) => {
-          const percent = Math.min(95, 40 + (progress.percent || 0) * 0.55);
+          const percent = Math.min(95, 85 + (progress.percent || 0) * 0.1);
           compilationProgress.set(jobId, { 
             percent: percent, 
-            stage: `Fast encoding: ${Math.round(progress.percent || 0)}%` 
+            stage: `Finalizing: ${Math.round(progress.percent || 0)}%` 
           });
-          console.log(`[FAST] Job ${jobId} progress:`, Math.round(progress.percent || 0) + '%');
         })
         .on('end', () => {
           clearTimeout(timeout);
-          console.log(`[FAST] Job ${jobId}: Fast compilation completed!`);
+          console.log(`[MULTI] Concatenation completed for job: ${jobId}`);
           resolve();
         })
         .on('error', (err) => {
           clearTimeout(timeout);
-          console.error(`[FAST] Job ${jobId}: FFmpeg error:`, err);
-          reject(new Error(`Fast compilation failed: ${err.message}`));
+          reject(new Error(`Concatenation failed: ${err.message}`));
         })
         .run();
     });
 
     // Clean up temp files
+    processedClipPaths.forEach(path => {
+      if (fs.existsSync(path)) {
+        fs.unlinkSync(path);
+      }
+    });
     if (fs.existsSync(concatListPath)) {
       fs.unlinkSync(concatListPath);
     }
-    console.log(`[FAST] Job ${jobId}: Temp files cleaned up`);
 
   } catch (error) {
-    console.error(`[FAST] Job ${jobId}: Error processing clips:`, error);
+    console.error(`[MULTI] Job ${jobId}: Error processing clips:`, error);
     compilationProgress.set(jobId, { percent: 0, stage: 'Error: ' + error.message });
     throw error;
   }

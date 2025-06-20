@@ -160,11 +160,17 @@ export class VideoCompilerService {
         
         // Poll for progress with improved error handling
         try {
-          await this.pollProgress(result.jobId, onProgress);
+          const finalResult = await this.pollProgress(result.jobId, onProgress);
+          console.log('Final result from polling:', finalResult);
+          
+          // Return the final result with download URL
+          return {
+            downloadUrl: finalResult.downloadUrl,
+            outputFile: finalResult.outputFile
+          };
         } catch (pollError) {
           console.error('Progress polling failed:', pollError);
-          // Don't fail the entire compilation if polling fails
-          onProgress(95, 'Finalizing...');
+          throw pollError;
         }
       } else if (result.success) {
         // Immediate success response
@@ -172,6 +178,11 @@ export class VideoCompilerService {
         if (onProgress) {
           onProgress(100, 'Complete!');
         }
+        
+        return {
+          downloadUrl: result.downloadUrl,
+          outputFile: result.outputFile
+        };
       }
       
       console.log('Final compilation result:', result);
@@ -204,7 +215,7 @@ export class VideoCompilerService {
     }
   }
 
-  private static async pollProgress(jobId: string, onProgress: (progress: number, stage: string) => void): Promise<void> {
+  private static async pollProgress(jobId: string, onProgress: (progress: number, stage: string) => void): Promise<{ downloadUrl?: string; outputFile?: string }> {
     console.log('Starting progress polling for job:', jobId);
     
     return new Promise((resolve, reject) => {
@@ -250,10 +261,13 @@ export class VideoCompilerService {
           onProgress(progressData.percent || 0, progressData.stage || 'Processing...');
 
           // Check for completion
-          if (progressData.percent >= 100) {
-            console.log('Progress polling complete - 100% reached');
+          if (progressData.percent >= 100 && progressData.downloadUrl) {
+            console.log('Progress polling complete - download URL available:', progressData.downloadUrl);
             clearInterval(pollInterval);
-            resolve();
+            resolve({
+              downloadUrl: progressData.downloadUrl,
+              outputFile: progressData.outputFile
+            });
             return;
           }
           
@@ -269,7 +283,7 @@ export class VideoCompilerService {
           if (pollCount >= maxPolls) {
             console.warn('Progress polling timeout reached');
             clearInterval(pollInterval);
-            resolve(); // Don't fail, just stop polling
+            reject(new Error('Progress polling timeout - compilation may still be running'));
           }
         } catch (error) {
           console.error('Progress polling network error:', error);
@@ -293,7 +307,7 @@ export class VideoCompilerService {
       setTimeout(() => {
         console.log('Progress polling cleanup timeout reached');
         clearInterval(pollInterval);
-        resolve();
+        reject(new Error('Progress polling timeout - compilation may still be running'));
       }, 300000); // 5 minutes total timeout
     });
   }
