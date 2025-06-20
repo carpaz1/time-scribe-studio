@@ -89,8 +89,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 onChange={handleDirectoryInput}
                 className="hidden"
                 id="video-directory"
-                webkitdirectory=""
-                directory=""
+                {...({
+                  webkitdirectory: '',
+                  directory: ''
+                } as any)}
               />
               <Button
                 asChild
