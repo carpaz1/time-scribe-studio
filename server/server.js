@@ -20,8 +20,9 @@ try {
 const app = express();
 const PORT = 4000;
 
-// Store active compilation progress
+// Store active compilation progress and processes
 const compilationProgress = new Map();
+const activeJobs = new Map(); // Track active FFmpeg processes for cancellation
 
 // Get CPU core count for parallel processing
 const CPU_CORES = os.cpus().length;
@@ -100,6 +101,27 @@ app.get('/progress/:jobId', (req, res) => {
   
   console.log(`[PROGRESS] Returning for job ${jobId}:`, progress);
   res.json(progress);
+});
+
+// Cancel endpoint for stopping active compilations
+app.post('/cancel/:jobId', (req, res) => {
+  const jobId = req.params.jobId;
+  console.log(`[CANCEL] Cancel request for job: ${jobId}`);
+  
+  const job = activeJobs.get(jobId);
+  if (job) {
+    console.log(`[CANCEL] Killing active process for job: ${jobId}`);
+    if (job.ffmpegProcess) {
+      job.ffmpegProcess.kill('SIGKILL');
+    }
+    activeJobs.delete(jobId);
+    compilationProgress.set(jobId, { percent: 0, stage: 'Cancelled by user', cancelled: true });
+    res.json({ success: true, message: 'Job cancelled' });
+  } else {
+    console.log(`[CANCEL] No active job found for: ${jobId}`);
+    compilationProgress.set(jobId, { percent: 0, stage: 'Cancelled', cancelled: true });
+    res.json({ success: true, message: 'Job marked as cancelled' });
+  }
 });
 
 // Upload and compile endpoint with enhanced error handling
@@ -249,6 +271,13 @@ async function processVideoCompilation(jobId, files, clipsData) {
   try {
     console.log(`\n[PROCESS] Starting async processing for job: ${jobId}`);
     
+    // Check for cancellation before starting
+    const currentProgress = compilationProgress.get(jobId);
+    if (currentProgress?.cancelled) {
+      console.log(`[PROCESS] Job ${jobId} was cancelled before processing`);
+      return;
+    }
+    
     compilationProgress.set(jobId, { percent: 10, stage: 'Preparing clips...' });
     console.log(`[PROCESS] Progress set to 10% for job: ${jobId}`);
 
@@ -315,15 +344,22 @@ async function processVideoCompilation(jobId, files, clipsData) {
       await processMultipleClipsFast(jobId, validClips, files, outputPath, videoSettings, fastOptions);
     }
 
+    // Check for cancellation before completing
+    const finalProgress = compilationProgress.get(jobId);
+    if (finalProgress?.cancelled) {
+      console.log(`[PROCESS] Job ${jobId} was cancelled during processing`);
+      return;
+    }
+
     // Mark as complete
-    const finalProgress = { 
+    const completeProgress = { 
       percent: 100, 
       stage: 'Complete!',
       downloadUrl: `/download/${outputFilename}`,
       outputFile: outputFilename
     };
-    compilationProgress.set(jobId, finalProgress);
-    console.log(`[SUCCESS] Compilation completed for job: ${jobId}`, finalProgress);
+    compilationProgress.set(jobId, completeProgress);
+    console.log(`[SUCCESS] Compilation completed for job: ${jobId}`, completeProgress);
 
     // Clean up uploaded files
     files.forEach(file => {
@@ -336,6 +372,7 @@ async function processVideoCompilation(jobId, files, clipsData) {
     // Clean up progress after 5 minutes
     setTimeout(() => {
       compilationProgress.delete(jobId);
+      activeJobs.delete(jobId);
       console.log(`[CLEANUP] Progress data cleaned up for job: ${jobId}`);
     }, 300000);
 
@@ -357,6 +394,15 @@ async function processVideoCompilation(jobId, files, clipsData) {
 function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fastOptions) {
   return new Promise((resolve, reject) => {
     console.log(`[SINGLE] Processing single clip for job: ${jobId}`);
+    
+    // Check for cancellation
+    const currentProgress = compilationProgress.get(jobId);
+    if (currentProgress?.cancelled) {
+      console.log(`[SINGLE] Job ${jobId} cancelled before processing`);
+      reject(new Error('Job cancelled'));
+      return;
+    }
+    
     compilationProgress.set(jobId, { percent: 20, stage: 'Encoding clip...' });
     
     const file = files[clip.fileIndex];
@@ -372,7 +418,7 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
       reject(new Error('Processing timeout - operation took too long'));
     }, 300000); // 5 minutes timeout
     
-    ffmpeg(file.path)
+    const ffmpegProcess = ffmpeg(file.path)
       .seekInput(Math.max(0, clip.startTime))
       .duration(Math.max(0.1, clip.duration))
       .videoCodec('libx264')
@@ -392,12 +438,24 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
         '-strict', '-2'
       ])
       .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
-      .output(outputPath)
+      .output(outputPath);
+
+    // Store the process for cancellation
+    activeJobs.set(jobId, { ffmpegProcess });
+
+    ffmpegProcess
       .on('start', (commandLine) => {
         console.log(`[SINGLE] FFmpeg started for job ${jobId}:`, commandLine);
         compilationProgress.set(jobId, { percent: 25, stage: 'Fast encoding in progress...' });
       })
       .on('progress', (progress) => {
+        // Check for cancellation during progress
+        const currentProgress = compilationProgress.get(jobId);
+        if (currentProgress?.cancelled) {
+          ffmpegProcess.kill('SIGKILL');
+          return;
+        }
+        
         const percent = Math.min(95, 25 + (progress.percent || 0) * 0.7);
         compilationProgress.set(jobId, { 
           percent: percent, 
@@ -407,11 +465,13 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
       })
       .on('end', () => {
         clearTimeout(timeout);
+        activeJobs.delete(jobId);
         console.log(`[SINGLE] Video compilation completed for job: ${jobId}`);
         resolve();
       })
       .on('error', (err) => {
         clearTimeout(timeout);
+        activeJobs.delete(jobId);
         console.error(`[SINGLE] FFmpeg error for job ${jobId}:`, err);
         console.error(`[SINGLE] FFmpeg stderr:`, err.message);
         reject(new Error(`FFmpeg encoding failed: ${err.message}`));
@@ -423,6 +483,13 @@ function processSingleClipFast(jobId, clip, files, outputPath, videoSettings, fa
 // Fixed processing for multiple clips - removed conflicting filters
 async function processMultipleClipsFast(jobId, validClips, files, outputPath, videoSettings, fastOptions) {
   try {
+    // Check for cancellation
+    let currentProgress = compilationProgress.get(jobId);
+    if (currentProgress?.cancelled) {
+      console.log(`[MULTI] Job ${jobId} cancelled before processing`);
+      throw new Error('Job cancelled');
+    }
+    
     compilationProgress.set(jobId, { percent: 20, stage: 'Creating video list...' });
     
     const tempDir = path.join(__dirname, 'temp');
@@ -436,6 +503,13 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
     const processedClipPaths = [];
     
     for (let i = 0; i < validClips.length; i++) {
+      // Check for cancellation before each clip
+      currentProgress = compilationProgress.get(jobId);
+      if (currentProgress?.cancelled) {
+        console.log(`[MULTI] Job ${jobId} cancelled during clip processing`);
+        throw new Error('Job cancelled');
+      }
+      
       const clip = validClips[i];
       const file = files[clip.fileIndex];
       const tempClipPath = path.join(tempDir, `temp_clip_${jobId}_${i}.mp4`);
@@ -447,7 +521,7 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
           reject(new Error(`Clip ${i} processing timeout`));
         }, 180000); // 3 minutes per clip
         
-        ffmpeg(file.path)
+        const ffmpegProcess = ffmpeg(file.path)
           .seekInput(Math.max(0, clip.startTime))
           .duration(Math.max(0.1, clip.duration))
           .videoCodec('libx264')
@@ -465,7 +539,12 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
             '-strict', '-2'
           ])
           .videoFilters('scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black')
-          .output(tempClipPath)
+          .output(tempClipPath);
+
+        // Store the process for cancellation
+        activeJobs.set(jobId, { ffmpegProcess });
+
+        ffmpegProcess
           .on('end', () => {
             clearTimeout(timeout);
             processedClipPaths.push(tempClipPath);
@@ -478,10 +557,18 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
           })
           .on('error', (err) => {
             clearTimeout(timeout);
+            activeJobs.delete(jobId);
             reject(new Error(`Clip ${i} processing failed: ${err.message}`));
           })
           .run();
       });
+    }
+
+    // Check for cancellation before concatenation
+    currentProgress = compilationProgress.get(jobId);
+    if (currentProgress?.cancelled) {
+      console.log(`[MULTI] Job ${jobId} cancelled before concatenation`);
+      throw new Error('Job cancelled');
     }
 
     // Create concat file
@@ -497,16 +584,28 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
         reject(new Error('Concatenation timeout'));
       }, 300000); // 5 minutes timeout
 
-      ffmpeg()
+      const ffmpegProcess = ffmpeg()
         .input(concatListPath)
         .inputOptions(['-f', 'concat', '-safe', '0'])
         .videoCodec('copy')
         .audioCodec('copy')
-        .output(outputPath)
+        .output(outputPath);
+
+      // Store the process for cancellation
+      activeJobs.set(jobId, { ffmpegProcess });
+
+      ffmpegProcess
         .on('start', (commandLine) => {
           console.log(`[MULTI] Final concat started for job ${jobId}`);
         })
         .on('progress', (progress) => {
+          // Check for cancellation during concatenation
+          const currentProgress = compilationProgress.get(jobId);
+          if (currentProgress?.cancelled) {
+            ffmpegProcess.kill('SIGKILL');
+            return;
+          }
+          
           const percent = Math.min(95, 85 + (progress.percent || 0) * 0.1);
           compilationProgress.set(jobId, { 
             percent: percent, 
@@ -515,11 +614,13 @@ async function processMultipleClipsFast(jobId, validClips, files, outputPath, vi
         })
         .on('end', () => {
           clearTimeout(timeout);
+          activeJobs.delete(jobId);
           console.log(`[MULTI] Concatenation completed for job: ${jobId}`);
           resolve();
         })
         .on('error', (err) => {
           clearTimeout(timeout);
+          activeJobs.delete(jobId);
           reject(new Error(`Concatenation failed: ${err.message}`));
         })
         .run();

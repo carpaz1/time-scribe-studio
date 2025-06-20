@@ -45,7 +45,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
       <CardHeader className="pb-3">
         <CardTitle className="text-lg text-slate-200 flex items-center gap-2">
           <Zap className="w-5 h-5" />
-          Generate & Randomize
+          Generate & Randomize (1-second clips)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -73,7 +73,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
         {/* Timed Randomize Section */}
         <div className="border-t border-slate-600 pt-4">
           <Label className="text-slate-300 mb-3 block text-sm font-medium">
-            Timed Randomize (auto-compile)
+            Timed Randomize & Compile (1s clips)
           </Label>
           <div className="space-y-3">
             <Select 
@@ -84,9 +84,9 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1">1 minute compilation</SelectItem>
-                <SelectItem value="2">2 minute compilation</SelectItem>
-                <SelectItem value="5">5 minute compilation</SelectItem>
+                <SelectItem value="1">1 minute (60 clips)</SelectItem>
+                <SelectItem value="2">2 minutes (120 clips)</SelectItem>
+                <SelectItem value="5">5 minutes (300 clips)</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -104,7 +104,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
         {isGenerating && (
           <div className="border-t border-slate-600 pt-4">
             <div className="text-center text-sm text-slate-300 space-y-3">
-              <div>Generating... {Math.round(generationProgress)}%</div>
+              <div>Processing... {Math.round(generationProgress)}%</div>
               <Button
                 onClick={onCancelProcessing}
                 variant="destructive"
@@ -112,7 +112,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
                 className="w-full"
               >
                 <X className="w-4 h-4 mr-2" />
-                Cancel Processing
+                Cancel All Processing
               </Button>
             </div>
           </div>

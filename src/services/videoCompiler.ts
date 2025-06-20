@@ -2,6 +2,8 @@
 import { VideoClip, TimelineConfig, CompileRequest } from '@/types/timeline';
 
 export class VideoCompilerService {
+  private static activeJobId: string | null = null;
+
   static async compileTimeline(
     timelineClips: VideoClip[],
     config: TimelineConfig,
@@ -153,6 +155,11 @@ export class VideoCompilerService {
       const result = await response.json();
       console.log('Server response parsed successfully:', result);
       
+      // Store the job ID for potential cancellation
+      if (result.jobId) {
+        this.activeJobId = result.jobId;
+      }
+      
       // Check if server is processing (no jobId means immediate response)
       if (result.jobId && onProgress) {
         console.log('Starting progress polling for job:', result.jobId);
@@ -163,6 +170,9 @@ export class VideoCompilerService {
           const finalResult = await this.pollProgress(result.jobId, onProgress);
           console.log('Final result from polling:', finalResult);
           
+          // Clear the active job ID when done
+          this.activeJobId = null;
+          
           // Return the final result with download URL
           return {
             downloadUrl: finalResult.downloadUrl,
@@ -170,6 +180,7 @@ export class VideoCompilerService {
           };
         } catch (pollError) {
           console.error('Progress polling failed:', pollError);
+          this.activeJobId = null;
           throw pollError;
         }
       } else if (result.success) {
@@ -179,6 +190,7 @@ export class VideoCompilerService {
           onProgress(100, 'Complete!');
         }
         
+        this.activeJobId = null;
         return {
           downloadUrl: result.downloadUrl,
           outputFile: result.outputFile
@@ -191,6 +203,7 @@ export class VideoCompilerService {
       const compileData: CompileRequest = { config, clips: timelineClips };
       onExport?.(compileData);
 
+      this.activeJobId = null;
       return {
         downloadUrl: result.downloadUrl,
         outputFile: result.outputFile
@@ -203,6 +216,8 @@ export class VideoCompilerService {
       console.error('Error message:', error?.message);
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       
+      this.activeJobId = null;
+      
       if (error instanceof TypeError && error.message.includes('fetch')) {
         throw new Error('Network error: Cannot connect to local server. Please make sure the backend server is running (start.bat).');
       }
@@ -212,6 +227,34 @@ export class VideoCompilerService {
       }
       
       throw error;
+    }
+  }
+
+  static async cancelCurrentJob(): Promise<void> {
+    if (!this.activeJobId) {
+      console.log('No active job to cancel');
+      return;
+    }
+
+    try {
+      console.log('Cancelling job:', this.activeJobId);
+      const response = await fetch(`http://localhost:4000/cancel/${this.activeJobId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Job cancellation result:', result);
+      } else {
+        console.error('Failed to cancel job:', response.status);
+      }
+    } catch (error) {
+      console.error('Error cancelling job:', error);
+    } finally {
+      this.activeJobId = null;
     }
   }
 
@@ -256,6 +299,14 @@ export class VideoCompilerService {
           
           // Reset error counter on successful response
           consecutiveErrors = 0;
+          
+          // Check for cancellation
+          if (progressData.cancelled) {
+            console.log('Job was cancelled');
+            clearInterval(pollInterval);
+            reject(new Error('Job was cancelled by user'));
+            return;
+          }
           
           // Update progress
           onProgress(progressData.percent || 0, progressData.stage || 'Processing...');

@@ -97,13 +97,22 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     setTimeout(processClips, 100);
   };
 
-  const handleCancelProcessing = () => {
+  const handleCancelProcessing = async () => {
+    console.log('Cancel processing clicked');
     setProcessingCancelled(true);
     setIsGenerating(false);
     setIsRandomEverything(false);
+    
+    // Cancel any active compilation job
+    try {
+      await VideoCompilerService.cancelCurrentJob();
+    } catch (error) {
+      console.error('Error cancelling compilation:', error);
+    }
+    
     toast({
       title: "Processing cancelled",
-      description: "Clip generation was cancelled",
+      description: "All operations have been cancelled",
     });
   };
 
@@ -135,7 +144,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
             name: `Random ${videoIndex}-${clipIndex}`,
             sourceFile: video.file,
             startTime,
-            duration: 1,
+            duration: 1, // Always use 1-second clips
             thumbnail: video.thumbnail,
             position: clipIndex,
             originalVideoId: video.id,
@@ -159,7 +168,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
       toast({
         title: "RANDOM EVERYTHING initiated!",
-        description: `Generated ${limitedClips.length} random clips and starting compilation...`,
+        description: `Generated ${limitedClips.length} random 1-second clips and starting compilation...`,
       });
 
       if (!processingCancelled) {
@@ -213,19 +222,17 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
       const targetDurationSeconds = targetDurationMinutes * 60;
       const randomClips: VideoClip[] = [];
       
-      // Calculate optimal clip duration to fit exactly in target time
-      const availableVideos = sourceVideos.filter(video => video.duration >= 1); // Only use videos longer than 1 second
+      // Calculate number of 1-second clips needed for target duration
+      const availableVideos = sourceVideos.filter(video => video.duration >= 1);
       if (availableVideos.length === 0) {
         throw new Error("No videos long enough to create clips from");
       }
       
-      // Use a reasonable clip duration (2-5 seconds) and calculate how many clips we need
-      const clipDuration = Math.max(2, Math.min(5, targetDurationSeconds / 10)); // 2-5 seconds per clip
-      const maxClips = Math.floor(targetDurationSeconds / clipDuration);
-      const actualClipCount = Math.min(maxClips, availableVideos.length * 3); // Max 3 clips per video
+      // Generate exactly the number of 1-second clips needed
+      const clipDuration = 1; // Always use 1-second clips
+      const clipsNeeded = Math.min(targetDurationSeconds, availableVideos.length * 5); // Max 5 clips per video
       
-      // Generate exactly the number of clips needed
-      for (let i = 0; i < actualClipCount; i++) {
+      for (let i = 0; i < clipsNeeded; i++) {
         if (processingCancelled) return;
         
         const videoIndex = i % availableVideos.length;
@@ -259,7 +266,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
       toast({
         title: `${targetDurationMinutes}-minute compilation started!`,
-        description: `Generated ${randomClips.length} clips (~${Math.round(actualDuration)}s total), starting compilation...`,
+        description: `Generated ${randomClips.length} 1-second clips (~${Math.round(actualDuration)}s total), starting compilation...`,
       });
 
       if (!processingCancelled) {
@@ -310,20 +317,20 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
     setProcessingCancelled(false);
     
     try {
-      // Generate 1 random 3-second clip from each video
+      // Generate 1 random 1-second clip from each video
       const randomClips: VideoClip[] = [];
       
       sourceVideos.forEach((video, videoIndex) => {
         if (processingCancelled) return;
         
-        const startTime = Math.random() * Math.max(0, video.duration - 3);
+        const startTime = Math.random() * Math.max(0, video.duration - 1);
         
         const randomClip: VideoClip = {
           id: `direct-${Date.now()}-${videoIndex}`,
           name: `Direct ${videoIndex}`,
           sourceFile: video.file,
           startTime,
-          duration: 3,
+          duration: 1, // Always use 1-second clips
           thumbnail: video.thumbnail,
           position: 0,
           originalVideoId: video.id,
@@ -339,7 +346,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
       
       toast({
         title: "Direct randomization complete!",
-        description: `Generated ${limitedClips.length} clips directly from your directory`,
+        description: `Generated ${limitedClips.length} 1-second clips directly from your directory`,
       });
 
     } catch (error) {
