@@ -1,3 +1,4 @@
+
 import React, { useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -176,12 +177,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   const handleExportJSON = useCallback(() => {
     VideoCompilerService.exportTimelineJSON(state.timelineClips, state.totalDuration, state.zoom, state.playheadPosition);
   }, [state]);
-
-  const handleClipRemove = useCallback((id: string) => {
-    updateState({ 
-      timelineClips: state.timelineClips.filter(clip => clip.id !== id) 
-    });
-  }, [state.timelineClips, updateState]);
 
   return (
     <DndProvider backend={HTML5Backend}>
