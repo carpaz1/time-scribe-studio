@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, Zap, Play, Image, X } from 'lucide-react';
+import { Upload, Zap, Play, Image, X, Sparkles, Clock, FileVideo } from 'lucide-react';
 
 interface WorkflowPanelProps {
   sourceVideos: File[];
@@ -61,12 +61,16 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
   return (
     <Card className="bg-slate-800/50 border-slate-700">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg text-slate-200 whitespace-nowrap">Video Workflow</CardTitle>
+        <CardTitle className="text-lg text-slate-200 whitespace-nowrap flex items-center">
+          <Sparkles className="w-5 h-5 mr-2 text-purple-400" />
+          Smart Video Workflow
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Step 1: Upload */}
         <div className="space-y-3">
-          <Label className="text-slate-300 text-sm font-medium block">
+          <Label className="text-slate-300 text-sm font-medium block flex items-center">
+            <Upload className="w-4 h-4 mr-2" />
             1. Upload Media ({sourceVideos.length} loaded)
           </Label>
           <div className="grid grid-cols-1 gap-2">
@@ -82,11 +86,11 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               <Button
                 asChild
                 variant="outline"
-                className="w-full border-slate-600 text-slate-300 text-xs px-2 py-1 h-8"
+                className="w-full border-slate-600 text-slate-300 text-xs px-2 py-1 h-8 hover:bg-slate-700/50"
                 disabled={isProcessing}
               >
-                <label htmlFor="video-files" className="cursor-pointer">
-                  <Upload className="w-3 h-3 mr-1" />
+                <label htmlFor="video-files" className="cursor-pointer flex items-center justify-center">
+                  <FileVideo className="w-3 h-3 mr-1" />
                   Select Files
                 </label>
               </Button>
@@ -107,10 +111,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               <Button
                 asChild
                 variant="outline"
-                className="w-full border-slate-600 text-slate-300 text-xs px-2 py-1 h-8"
+                className="w-full border-slate-600 text-slate-300 text-xs px-2 py-1 h-8 hover:bg-slate-700/50"
                 disabled={isProcessing}
               >
-                <label htmlFor="video-directory" className="cursor-pointer">
+                <label htmlFor="video-directory" className="cursor-pointer flex items-center justify-center">
                   <Upload className="w-3 h-3 mr-1" />
                   Select Folder
                 </label>
@@ -119,34 +123,43 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
           </div>
         </div>
 
-        {/* Step 2: Choose Workflow (only show if videos uploaded) */}
+        {/* Step 2: Smart Generation & Compilation */}
         {sourceVideos.length > 0 && (
           <div className="space-y-3">
-            <Label className="text-slate-300 text-sm font-medium block">
-              2. Generate & Compile
+            <Label className="text-slate-300 text-sm font-medium block flex items-center">
+              <Zap className="w-4 h-4 mr-2 text-yellow-400" />
+              2. Smart Generation & Compilation
             </Label>
             
-            {/* Include Pictures Checkbox */}
-            <div className="flex items-center space-x-2 p-2 bg-slate-700/30 rounded">
-              <Checkbox 
-                id="include-pictures" 
-                checked={includePictures}
-                onCheckedChange={handlePicturesToggle}
-                disabled={isProcessing}
-              />
-              <label 
-                htmlFor="include-pictures" 
-                className="text-xs text-slate-300 cursor-pointer flex items-center"
-              >
-                <Image className="w-3 h-3 mr-1" />
-                Include Pictures
-              </label>
+            {/* Enhanced Options */}
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2 p-2 bg-slate-700/30 rounded">
+                <Checkbox 
+                  id="include-pictures" 
+                  checked={includePictures}
+                  onCheckedChange={handlePicturesToggle}
+                  disabled={isProcessing}
+                />
+                <label 
+                  htmlFor="include-pictures" 
+                  className="text-xs text-slate-300 cursor-pointer flex items-center"
+                >
+                  <Image className="w-3 h-3 mr-1" />
+                  Include Pictures
+                </label>
+              </div>
             </div>
 
             <Tabs value={activeWorkflow} onValueChange={(value) => setActiveWorkflow(value as 'quick' | 'custom')}>
               <TabsList className="grid w-full grid-cols-2 bg-slate-700/50 h-8">
-                <TabsTrigger value="quick" className="text-xs">Quick Auto</TabsTrigger>
-                <TabsTrigger value="custom" className="text-xs">Custom Timeline</TabsTrigger>
+                <TabsTrigger value="quick" className="text-xs flex items-center">
+                  <Sparkles className="w-3 h-3 mr-1" />
+                  Smart Auto
+                </TabsTrigger>
+                <TabsTrigger value="custom" className="text-xs flex items-center">
+                  <Clock className="w-3 h-3 mr-1" />
+                  Custom Timeline
+                </TabsTrigger>
               </TabsList>
               
               <TabsContent value="quick" className="space-y-3 mt-3">
@@ -159,9 +172,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">1 min (60 clips) - Fast</SelectItem>
-                    <SelectItem value="2">2 min (120 clips) - Medium</SelectItem>
-                    <SelectItem value="5">5 min (300 clips) - Long</SelectItem>
+                    <SelectItem value="1">⚡ 1 min (60 clips) - Fast & Sharp</SelectItem>
+                    <SelectItem value="2">🎯 2 min (120 clips) - Balanced</SelectItem>
+                    <SelectItem value="5">🎬 5 min (300 clips) - Cinematic</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
@@ -170,13 +183,18 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                   className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-xs px-2 py-1 h-8"
                 >
                   <Zap className="w-3 h-3 mr-1" />
-                  {isProcessing ? 'Processing...' : `Auto Generate ${selectedDuration}min Video`}
+                  {isProcessing ? 'Smart Processing...' : `Generate ${selectedDuration}min Video`}
                 </Button>
+                {!isProcessing && (
+                  <div className="text-xs text-slate-400 text-center">
+                    ✨ Auto-generation with smart transitions & color correction
+                  </div>
+                )}
               </TabsContent>
               
               <TabsContent value="custom" className="space-y-3 mt-3">
-                <div className="text-xs text-slate-400">
-                  Custom workflow allows manual clip selection and arrangement
+                <div className="text-xs text-slate-400 p-2 bg-slate-700/20 rounded">
+                  Manual timeline creation for precise control over clip placement and timing
                 </div>
                 <Button
                   onClick={onCompile}
@@ -195,10 +213,11 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
         {isProcessing && (
           <div className="space-y-3 border-t border-slate-600 pt-3">
             <div className="flex items-center justify-between text-xs text-slate-300">
-              <span className="truncate pr-2 flex-1">
-                {processingStage || 'Processing...'}
+              <span className="truncate pr-2 flex-1 flex items-center">
+                <Sparkles className="w-3 h-3 mr-1 text-purple-400 animate-pulse" />
+                {processingStage || 'Smart Processing...'}
               </span>
-              <span className="whitespace-nowrap font-mono">
+              <span className="whitespace-nowrap font-mono bg-slate-700/50 px-2 py-1 rounded">
                 {Math.round(processingProgress)}%
               </span>
             </div>
@@ -207,8 +226,9 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               className="h-3 bg-slate-600"
             />
             <div className="flex items-center justify-between text-xs">
-              <div className="text-slate-400">
-                {processingProgress < 50 ? 'Generating clips...' : 'Compiling video...'}
+              <div className="text-slate-400 flex items-center">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></div>
+                {processingProgress < 50 ? 'Generating smart clips...' : 'Compiling with AI enhancements...'}
               </div>
               <Button
                 onClick={onCancelProcessing}

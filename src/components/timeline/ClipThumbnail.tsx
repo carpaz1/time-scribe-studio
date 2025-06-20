@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, FileVideo } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, FileVideo, Sparkles } from 'lucide-react';
 import { VideoClip } from '@/types/timeline';
 import { Button } from '@/components/ui/button';
 
@@ -28,7 +28,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
   const [thumbnailError, setThumbnailError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const generationAttemptedRef = useRef(false);
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -38,112 +38,75 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
     top: '10px',
   };
 
-  // Enhanced thumbnail generation with better error handling and fallbacks
-  useEffect(() => {
-    let mounted = true;
-    let timeoutId: NodeJS.Timeout;
-    
-    console.log('ClipThumbnail: Starting thumbnail generation for clip:', clip.name);
+  // Optimized thumbnail generation
+  const generateThumbnail = useCallback(async () => {
+    if (generationAttemptedRef.current) return;
+    generationAttemptedRef.current = true;
+
+    console.log('ClipThumbnail: Starting optimized thumbnail generation for:', clip.name);
     setIsLoading(true);
     setThumbnailError(false);
 
-    const generateThumbnail = async () => {
-      try {
-        const video = document.createElement('video');
-        videoRef.current = video;
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = 'metadata';
-        video.crossOrigin = 'anonymous';
-        
-        const objectUrl = URL.createObjectURL(clip.sourceFile);
-        console.log('ClipThumbnail: Created object URL for:', clip.name);
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error('Canvas not available');
+      
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) throw new Error('Canvas context not available');
+      
+      // Set canvas size
+      canvas.width = 120;
+      canvas.height = 68;
+      
+      // Create video element with optimized settings
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      video.crossOrigin = 'anonymous';
+      
+      const objectUrl = URL.createObjectURL(clip.sourceFile);
+      
+      const cleanup = () => {
+        try {
+          URL.revokeObjectURL(objectUrl);
+          video.src = '';
+        } catch (e) {
+          console.warn('ClipThumbnail: Cleanup error:', e);
+        }
+      };
 
-        const cleanup = () => {
-          try {
-            URL.revokeObjectURL(objectUrl);
-            if (videoRef.current) {
-              videoRef.current.src = '';
-              videoRef.current = null;
-            }
-          } catch (e) {
-            console.warn('ClipThumbnail: Cleanup error:', e);
-          }
-        };
-
-        // Set timeout for the entire process
-        timeoutId = setTimeout(() => {
-          console.warn('ClipThumbnail: Thumbnail generation timeout for:', clip.name);
-          if (mounted) {
-            setThumbnailError(true);
-            setIsLoading(false);
-            // Generate fallback thumbnail
-            generateFallbackThumbnail();
-          }
-          cleanup();
-        }, 8000);
-
-        video.addEventListener('error', (e) => {
-          console.error('ClipThumbnail: Video load error for:', clip.name, e);
-          if (mounted) {
-            generateFallbackThumbnail();
-          }
-          cleanup();
-        });
+      // Enhanced loading with faster timeout
+      const loadPromise = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Load timeout'));
+        }, 3000); // Reduced timeout
 
         video.addEventListener('loadedmetadata', () => {
-          if (!mounted) {
-            cleanup();
-            return;
-          }
-
-          console.log('ClipThumbnail: Video metadata loaded for:', clip.name, 'duration:', video.duration);
-
+          clearTimeout(timeout);
+          
           try {
-            const canvas = canvasRef.current;
-            if (!canvas) {
-              console.error('ClipThumbnail: Canvas not available');
-              generateFallbackThumbnail();
-              cleanup();
-              return;
-            }
-            
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              console.error('ClipThumbnail: Canvas context not available');
-              generateFallbackThumbnail();
-              cleanup();
-              return;
-            }
-            
-            canvas.width = 120;
-            canvas.height = 68;
-            
-            // Seek to a safe position for thumbnail (middle of clip or 1 second)
+            // Smart seek position - middle of clip or 1 second
             const seekTime = Math.min(
-              Math.max(clip.startTime + (clip.duration / 2), 1),
-              video.duration - 0.5
+              Math.max(clip.startTime + (clip.duration / 2), 0.5),
+              video.duration - 0.1
             );
             
-            console.log('ClipThumbnail: Seeking to time:', seekTime, 'for clip:', clip.name);
-            
             const onSeeked = () => {
-              if (!mounted) {
-                cleanup();
-                return;
-              }
-
               try {
-                console.log('ClipThumbnail: Drawing thumbnail for:', clip.name);
+                // Enhanced drawing with better quality
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                 setThumbnailUrl(dataUrl);
                 setIsLoading(false);
-                setThumbnailError(false);
-                console.log('ClipThumbnail: Thumbnail generated successfully for:', clip.name);
+                console.log('ClipThumbnail: Enhanced thumbnail generated for:', clip.name);
+                resolve();
               } catch (drawError) {
-                console.error('ClipThumbnail: Canvas draw error for:', clip.name, drawError);
-                generateFallbackThumbnail();
+                console.error('ClipThumbnail: Draw error:', drawError);
+                reject(drawError);
               }
               cleanup();
             };
@@ -151,86 +114,84 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             video.addEventListener('seeked', onSeeked, { once: true });
             video.currentTime = seekTime;
             
-            // Fallback if seeked doesn't fire within 2 seconds
+            // Fallback timer
             setTimeout(() => {
-              if (mounted && isLoading && !thumbnailUrl && !thumbnailError) {
-                console.log('ClipThumbnail: Seeked event timeout, trying to draw anyway for:', clip.name);
-                onSeeked();
-              }
-            }, 2000);
+              if (isLoading) onSeeked();
+            }, 1000);
             
           } catch (error) {
-            console.error('ClipThumbnail: Thumbnail process error for:', clip.name, error);
-            generateFallbackThumbnail();
-            cleanup();
+            reject(error);
           }
-        });
+        }, { once: true });
 
-        video.src = objectUrl;
-        video.load();
+        video.addEventListener('error', (e) => {
+          clearTimeout(timeout);
+          reject(new Error('Video load failed'));
+        }, { once: true });
+      });
 
-      } catch (err) {
-        console.error('ClipThumbnail: Setup error for:', clip.name, err);
-        if (mounted) {
-          generateFallbackThumbnail();
-        }
-      }
-    };
+      video.src = objectUrl;
+      await loadPromise;
+      
+    } catch (error) {
+      console.error('ClipThumbnail: Generation failed for:', clip.name, error);
+      setThumbnailError(true);
+      generateFallbackThumbnail();
+    }
+  }, [clip, isLoading]);
 
-    const generateFallbackThumbnail = () => {
-      try {
-        const canvas = canvasRef.current;
-        if (canvas && mounted) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            canvas.width = 120;
-            canvas.height = 68;
-            
-            // Create a gradient background
-            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-            gradient.addColorStop(0, '#3B82F6');
-            gradient.addColorStop(1, '#1E40AF');
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Add text
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 10px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('VIDEO', canvas.width / 2, canvas.height / 2 - 5);
-            ctx.font = '8px Arial';
-            ctx.fillText(clip.duration.toFixed(1) + 's', canvas.width / 2, canvas.height / 2 + 8);
-            
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            setThumbnailUrl(dataUrl);
-            setIsLoading(false);
-            setThumbnailError(false);
-          }
-        }
-      } catch (error) {
-        console.error('ClipThumbnail: Fallback thumbnail generation failed:', error);
-        setThumbnailError(true);
-        setIsLoading(false);
-      }
-    };
+  // Enhanced fallback thumbnail
+  const generateFallbackThumbnail = useCallback(() => {
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      canvas.width = 120;
+      canvas.height = 68;
+      
+      // Create attractive gradient
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, '#6366F1');
+      gradient.addColorStop(1, '#8B5CF6');
+      
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Add sparkle effect
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('✨', canvas.width / 2, canvas.height / 2 - 8);
+      
+      ctx.font = '8px Arial';
+      ctx.fillText(`${clip.duration.toFixed(1)}s`, canvas.width / 2, canvas.height / 2 + 12);
+      
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      setThumbnailUrl(dataUrl);
+      setIsLoading(false);
+      setThumbnailError(false);
+    } catch (error) {
+      console.error('ClipThumbnail: Fallback generation failed:', error);
+      setThumbnailError(true);
+      setIsLoading(false);
+    }
+  }, [clip.duration]);
 
-    generateThumbnail();
-
-    return () => {
-      mounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    };
-  }, [clip.sourceFile, clip.name, clip.startTime, clip.duration, isLoading, thumbnailUrl, thumbnailError]);
+  // Trigger generation on mount
+  useEffect(() => {
+    const timer = setTimeout(generateThumbnail, Math.random() * 200);
+    return () => clearTimeout(timer);
+  }, [generateThumbnail]);
 
   return (
     <div
       style={style}
       className={`bg-gray-700 border border-gray-500 rounded cursor-move transition-all duration-200 group overflow-hidden ${
-        isDragging ? 'opacity-50 scale-105' : ''
-      } ${isHovered ? 'shadow-lg shadow-blue-500/30 border-blue-400' : ''}`}
+        isDragging ? 'opacity-50 scale-105 shadow-lg' : ''
+      } ${isHovered ? 'shadow-lg shadow-purple-500/30 border-purple-400' : ''}`}
       draggable
       onDragStart={(e) => onDragStart(e, clip)}
       onMouseEnter={() => setIsHovered(true)}
@@ -239,10 +200,10 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       
       <div className="relative h-full">
-        {/* Thumbnail or Fallback */}
+        {/* Enhanced Thumbnail Display */}
         {isLoading ? (
           <div className="w-full h-full bg-gradient-to-r from-slate-600 to-slate-700 flex items-center justify-center">
-            <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+            <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
           </div>
         ) : thumbnailUrl ? (
           <img 
@@ -255,27 +216,28 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             }}
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center">
+          <div className="w-full h-full bg-gradient-to-r from-purple-500 to-indigo-600 flex items-center justify-center">
             <FileVideo className="w-6 h-6 text-white" />
           </div>
         )}
 
-        {/* Overlay with clip info */}
+        {/* Enhanced Overlay */}
         <div className="absolute inset-0 bg-black bg-opacity-40 flex flex-col justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="text-xs text-white font-medium truncate mb-1 px-2 max-w-full">
+          <div className="text-xs text-white font-medium truncate mb-1 px-2 max-w-full flex items-center">
+            <Sparkles className="w-3 h-3 mr-1" />
             {clip.name}
           </div>
-          <div className="text-xs text-blue-100">
+          <div className="text-xs text-purple-100 bg-purple-600/50 px-2 py-1 rounded">
             {clip.duration.toFixed(1)}s
           </div>
         </div>
 
-        {/* Remove Button */}
+        {/* Enhanced Remove Button */}
         <Button
           size="sm"
           variant="destructive"
-          className={`absolute -top-1 -right-1 w-5 h-5 p-0 transition-opacity duration-200 ${
-            isHovered ? 'opacity-100' : 'opacity-0'
+          className={`absolute -top-1 -right-1 w-5 h-5 p-0 transition-all duration-200 ${
+            isHovered ? 'opacity-100 scale-110' : 'opacity-0'
           }`}
           onClick={(e) => {
             e.stopPropagation();
