@@ -189,23 +189,32 @@ app.post('/git-pull', async (req, res) => {
     console.log('Git pull request received');
     
     const { spawn } = require('child_process');
-    const process = spawn('git', ['pull'], { 
-      cwd: __dirname + '/..',
+    const path = require('path');
+    
+    // Get the correct project root directory
+    const projectRoot = path.resolve(__dirname, '..');
+    console.log('Project root:', projectRoot);
+    
+    const gitProcess = spawn('git', ['pull'], { 
+      cwd: projectRoot,
       stdio: 'pipe'
     });
     
     let output = '';
     let errorOutput = '';
     
-    process.stdout.on('data', (data) => {
+    gitProcess.stdout.on('data', (data) => {
       output += data.toString();
+      console.log('Git stdout:', data.toString());
     });
     
-    process.stderr.on('data', (data) => {
+    gitProcess.stderr.on('data', (data) => {
       errorOutput += data.toString();
+      console.log('Git stderr:', data.toString());
     });
     
-    process.on('close', (code) => {
+    gitProcess.on('close', (code) => {
+      console.log('Git process closed with code:', code);
       if (code === 0) {
         res.json({ 
           success: true, 
@@ -217,6 +226,14 @@ app.post('/git-pull', async (req, res) => {
           message: `Git pull failed with code ${code}: ${errorOutput || output}` 
         });
       }
+    });
+    
+    gitProcess.on('error', (error) => {
+      console.error('Git process error:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: `Git command failed: ${error.message}` 
+      });
     });
     
   } catch (error) {

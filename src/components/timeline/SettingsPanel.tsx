@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, Download, Trash2, AlertTriangle } from 'lucide-react';
+import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
+import { useSaveFolder } from '@/hooks/useSaveFolder';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateStage, setUpdateStage] = useState('');
   const { toast } = useToast();
+  const { saveFolder, selectFolder, resetToDefault } = useSaveFolder();
 
   if (!isOpen) return null;
 
@@ -147,6 +149,50 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
               </CardContent>
             </Card>
           )}
+
+          {/* Save Folder Section */}
+          <Card className="bg-slate-700/50 border-slate-600">
+            <CardHeader>
+              <CardTitle className="text-lg text-white flex items-center gap-2">
+                <Folder className="w-5 h-5" />
+                Download Folder
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-slate-300">
+                Set the default folder for downloads and auto-saves.
+              </p>
+              
+              <div className="bg-slate-800/50 p-3 rounded border border-slate-600">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300">Current folder:</span>
+                  <span className="text-sm text-emerald-400 font-mono">{saveFolder}</span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Button
+                  onClick={selectFolder}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <FolderOpen className="w-4 h-4 mr-2" />
+                  Browse Folder
+                </Button>
+                
+                <Button
+                  onClick={resetToDefault}
+                  variant="outline"
+                  className="border-slate-600 text-slate-300 hover:bg-slate-600"
+                >
+                  Reset to Downloads
+                </Button>
+              </div>
+              
+              <div className="text-xs text-slate-400 bg-slate-800/50 p-3 rounded">
+                <strong>Note:</strong> Randomized clips and compiled videos will automatically save to this folder.
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Git Update Section */}
           <Card className="bg-slate-700/50 border-slate-600">

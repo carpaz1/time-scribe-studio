@@ -1,3 +1,4 @@
+
 import React, { memo } from 'react';
 import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -38,20 +39,16 @@ const TimelineControls: React.FC<TimelineControlsProps> = memo(({
   onOpenSettings,
   lastCompilationResult,
 }) => {
-  // Only log when actually compiling or when significant state changes
-  if (isCompiling || compilationProgress > 0) {
-    console.log('TimelineControls: Compilation state:', { 
-      isCompiling, 
-      compilationProgress: compilationProgress.toFixed(1), 
-      compilationStage,
-      timelineClipsLength 
-    });
-  }
-
   const handleDownload = () => {
     console.log('TimelineControls: Download button clicked:', lastCompilationResult);
     if (lastCompilationResult?.downloadUrl) {
-      window.open(`http://localhost:4000${lastCompilationResult.downloadUrl}`, '_blank');
+      // Create a proper download link
+      const link = document.createElement('a');
+      link.href = `http://localhost:4000${lastCompilationResult.downloadUrl}`;
+      link.download = lastCompilationResult.outputFile || 'compiled-video.mp4';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
@@ -174,19 +171,19 @@ const TimelineControls: React.FC<TimelineControlsProps> = memo(({
         {isCompiling ? 'Compiling...' : 'Compile Video'}
       </Button>
 
-      {/* Download Compiled Video Button */}
-      {lastCompilationResult?.downloadUrl && (
+      {/* Download Compiled Video Button - More Prominent */}
+      {lastCompilationResult?.downloadUrl && !isCompiling && (
         <Button
           onClick={handleDownload}
-          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-10 px-6 text-base font-semibold"
+          className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 h-10 px-6 text-base font-semibold animate-pulse"
         >
-          <ExternalLink className="w-5 h-5 mr-2" />
+          <Download className="w-5 h-5 mr-2" />
           Download Video
         </Button>
       )}
 
-      {/* Enhanced Progress Indicator with Debug Info */}
-      {isCompiling && (
+      {/* Enhanced Progress Indicator with Real-time Updates */}
+      {isCompiling && compilationProgress > 0 && (
         <div className="flex items-center gap-3 bg-slate-700/50 rounded-lg p-3 min-w-[350px]">
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
@@ -200,8 +197,8 @@ const TimelineControls: React.FC<TimelineControlsProps> = memo(({
               className="h-3 bg-slate-600"
             />
             <div className="text-xs text-slate-400 mt-1 flex justify-between">
-              <span>GPU acceleration enabled</span>
-              <span>Progress: {compilationProgress.toFixed(1)}%</span>
+              <span>Encoding in progress</span>
+              <span>{Math.round(compilationProgress)}% complete</span>
             </div>
           </div>
         </div>

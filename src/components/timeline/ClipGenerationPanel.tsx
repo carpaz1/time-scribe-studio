@@ -14,6 +14,7 @@ interface ClipGenerationConfig {
   randomSelection: boolean;
   videoSelectionMode: 'all' | 'specific';
   numVideos: number;
+  compilationDuration?: number;
 }
 
 interface ClipGenerationPanelProps {
@@ -23,6 +24,7 @@ interface ClipGenerationPanelProps {
   onGenerateClips: (config: ClipGenerationConfig) => void;
   onRandomizeAll: () => void;
   clipsCount: number;
+  compilationDuration?: number;
 }
 
 const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
@@ -32,6 +34,7 @@ const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
   onGenerateClips,
   onRandomizeAll,
   clipsCount,
+  compilationDuration = 60,
 }) => {
   const [config, setConfig] = useState<ClipGenerationConfig>({
     numClips: 3,
@@ -41,8 +44,23 @@ const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
     numVideos: Math.min(20, sourceVideosCount),
   });
 
+  // Calculate optimal number of clips based on compilation duration
+  const maxClipsForDuration = Math.floor(compilationDuration / config.clipDuration);
+  const totalClipsGenerated = config.numClips * (config.videoSelectionMode === 'all' ? sourceVideosCount : config.numVideos);
+  const isExceedingDuration = totalClipsGenerated > maxClipsForDuration;
+
   const handleGenerateClips = () => {
-    onGenerateClips(config);
+    const optimizedConfig = {
+      ...config,
+      compilationDuration,
+    };
+    
+    // Warn if generating more clips than needed
+    if (isExceedingDuration) {
+      console.warn(`Generating ${totalClipsGenerated} clips but only ${maxClipsForDuration} needed for ${compilationDuration}s compilation`);
+    }
+    
+    onGenerateClips(optimizedConfig);
   };
 
   return (
@@ -56,6 +74,21 @@ const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
             </span>
           )}
         </div>
+
+        {/* Compilation Duration Info */}
+        {compilationDuration && (
+          <div className="bg-indigo-500/10 border border-indigo-500/30 rounded p-3">
+            <div className="text-xs text-indigo-300 mb-1">Target compilation: {compilationDuration}s</div>
+            <div className="text-xs text-slate-400">
+              Max clips needed: {maxClipsForDuration} ({config.clipDuration}s each)
+            </div>
+            {isExceedingDuration && (
+              <div className="text-xs text-amber-400 mt-1">
+                ⚠️ Will generate {totalClipsGenerated} clips (only {maxClipsForDuration} will be used)
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Configuration Options */}
         <Card className="bg-slate-700/30 border-slate-600/50">
