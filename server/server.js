@@ -217,52 +217,273 @@ app.post('/git-pull', async (req, res) => {
     const projectRoot = path.resolve(__dirname, '..');
     console.log('Project root:', projectRoot);
     
-    const gitProcess = spawn('git', ['pull'], { 
+    // Check if git is available
+    const gitCheck = spawn('git', ['--version'], { 
       cwd: projectRoot,
       stdio: 'pipe'
     });
     
-    let output = '';
-    let errorOutput = '';
-    
-    gitProcess.stdout.on('data', (data) => {
-      output += data.toString();
-      console.log('Git stdout:', data.toString());
-    });
-    
-    gitProcess.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      console.log('Git stderr:', data.toString());
-    });
-    
-    gitProcess.on('close', (code) => {
-      console.log('Git process closed with code:', code);
-      if (code === 0) {
-        res.json({ 
-          success: true, 
-          message: output || 'Git pull completed successfully' 
-        });
-      } else {
-        res.status(500).json({ 
-          success: false, 
-          message: `Git pull failed with code ${code}: ${errorOutput || output}` 
-        });
-      }
-    });
-    
-    gitProcess.on('error', (error) => {
-      console.error('Git process error:', error);
-      res.status(500).json({ 
+    gitCheck.on('error', (error) => {
+      console.error('Git not found:', error);
+      return res.status(500).json({ 
         success: false, 
-        message: `Git command failed: ${error.message}` 
+        error: 'Git is not installed or not available in PATH' 
       });
     });
+    
+    gitCheck.on('close', (code) => {
+      if (code !== 0) {
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Git is not properly configured' 
+        });
+      }
+      
+      // Proceed with git pull
+      performGitPull();
+    });
+    
+    function performGitPull() {
+      const gitProcess = spawn('git', ['pull'], { 
+        cwd: projectRoot,
+        stdio: 'pipe'
+      });
+      
+      let output = '';
+      let errorOutput = '';
+      
+      gitProcess.stdout.on('data', (data) => {
+        output += data.toString();
+        console.log('Git stdout:', data.toString());
+      });
+      
+      gitProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+        console.log('Git stderr:', data.toString());
+      });
+      
+      gitProcess.on('close', (code) => {
+        console.log('Git process closed with code:', code);
+        
+        if (code === 0) {
+          res.json({ 
+            success: true, 
+            message: output || 'Git pull completed successfully' 
+          });
+        } else {
+          // Check for specific error types
+          if (errorOutput.includes('overwritten by merge') || errorOutput.includes('would be overwritten')) {
+            res.status(409).json({ 
+              success: false, 
+              error: 'Your local changes would be overwritten by merge. Please commit your changes or stash them before you merge.',
+              type: 'merge_conflict'
+            });
+          } else if (errorOutput.includes('not a git repository')) {
+            res.status(400).json({ 
+              success: false, 
+              error: 'This directory is not a git repository'
+            });
+          } else {
+            res.status(500).json({ 
+              success: false, 
+              error: errorOutput || output || `Git pull failed with exit code ${code}`
+            });
+          }
+        }
+      });
+      
+      gitProcess.on('error', (error) => {
+        console.error('Git process error:', error);
+        res.status(500).json({ 
+          success: false, 
+          error: `Git command failed: ${error.message}` 
+        });
+      });
+    }
     
   } catch (error) {
     console.error('Git pull error:', error);
     res.status(500).json({ 
       success: false, 
-      message: error.message 
+      error: error.message 
+    });
+  }
+});
+
+app.post('/git-pull-stash', async (req, res) => {
+  try {
+    console.log('Git pull with stash request received');
+    
+    const { spawn } = require('child_process');
+    const path = require('path');
+    
+    const projectRoot = path.resolve(__dirname, '..');
+    console.log('Project root:', projectRoot);
+    
+    // First stash changes
+    const stashProcess = spawn('git', ['stash'], { 
+      cwd: projectRoot,
+      stdio: 'pipe'
+    });
+    
+    let stashOutput = '';
+    let stashError = '';
+    
+    stashProcess.stdout.on('data', (data) => {
+      stashOutput += data.toString();
+    });
+    
+    stashProcess.stderr.on('data', (data) => {
+      stashError += data.toString();
+    });
+    
+    stashProcess.on('close', (stashCode) => {
+      console.log('Git stash completed with code:', stashCode);
+      
+      // Now pull
+      const pullProcess = spawn('git', ['pull'], { 
+        cwd: projectRoot,
+        stdio: 'pipe'
+      });
+      
+      let pullOutput = '';
+      let pullError = '';
+      
+      pullProcess.stdout.on('data', (data) => {
+        pullOutput += data.toString();
+      });
+      
+      pullProcess.stderr.on('data', (data) => {
+        pullError += data.toString();
+      });
+      
+      pullProcess.on('close', (pullCode) => {
+        if (pullCode === 0) {
+          // Try to restore stash
+          const popProcess = spawn('git', ['stash', 'pop'], { 
+            cwd: projectRoot,
+            stdio: 'pipe'
+          });
+          
+          popProcess.on('close', (popCode) => {
+            res.json({ 
+              success: true, 
+              message: `Git pull with stash completed. ${popCode === 0 ? 'Stashed changes restored.' : 'Note: Could not restore stashed changes automatically.'}` 
+            });
+          });
+          
+          popProcess.on('error', () => {
+            res.json({ 
+              success: true, 
+              message: 'Git pull completed, but could not restore stashed changes automatically.' 
+            });
+          });
+        } else {
+          res.status(500).json({ 
+            success: false, 
+            error: pullError || pullOutput || `Git pull failed with exit code ${pullCode}` 
+          });
+        }
+      });
+      
+      pullProcess.on('error', (error) => {
+        res.status(500).json({ 
+          success: false, 
+          error: `Git pull failed: ${error.message}` 
+        });
+      });
+    });
+    
+    stashProcess.on('error', (error) => {
+      res.status(500).json({ 
+        success: false, 
+        error: `Git stash failed: ${error.message}` 
+      });
+    });
+    
+  } catch (error) {
+    console.error('Git pull stash error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+app.post('/git-pull-force', async (req, res) => {
+  try {
+    console.log('Git pull force request received');
+    
+    const { spawn } = require('child_process');
+    const path = require('path');
+    
+    const projectRoot = path.resolve(__dirname, '..');
+    console.log('Project root:', projectRoot);
+    
+    // Reset hard and pull
+    const resetProcess = spawn('git', ['reset', '--hard', 'HEAD'], { 
+      cwd: projectRoot,
+      stdio: 'pipe'
+    });
+    
+    resetProcess.on('close', (resetCode) => {
+      if (resetCode === 0) {
+        const pullProcess = spawn('git', ['pull'], { 
+          cwd: projectRoot,
+          stdio: 'pipe'
+        });
+        
+        let output = '';
+        let errorOutput = '';
+        
+        pullProcess.stdout.on('data', (data) => {
+          output += data.toString();
+        });
+        
+        pullProcess.stderr.on('data', (data) => {
+          errorOutput += data.toString();
+        });
+        
+        pullProcess.on('close', (code) => {
+          if (code === 0) {
+            res.json({ 
+              success: true, 
+              message: 'Force git pull completed successfully. Local changes have been discarded.' 
+            });
+          } else {
+            res.status(500).json({ 
+              success: false, 
+              error: errorOutput || output || `Git pull failed with exit code ${code}` 
+            });
+          }
+        });
+        
+        pullProcess.on('error', (error) => {
+          res.status(500).json({ 
+            success: false, 
+            error: `Git pull failed: ${error.message}` 
+          });
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          error: 'Failed to reset local changes' 
+        });
+      }
+    });
+    
+    resetProcess.on('error', (error) => {
+      res.status(500).json({ 
+        success: false, 
+        error: `Git reset failed: ${error.message}` 
+      });
+    });
+    
+  } catch (error) {
+    console.error('Git pull force error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
     });
   }
 });
