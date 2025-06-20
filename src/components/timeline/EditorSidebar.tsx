@@ -41,6 +41,15 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
   onAISuggestion,
   onAIEdit,
 }) => {
+  // Wrap non-async functions to return promises to match ImprovedWorkflowPanel expectations
+  const handleQuickRandomize = async (duration: number, includePictures?: boolean) => {
+    onQuickRandomize(duration, includePictures);
+  };
+
+  const handleCancelProcessing = async () => {
+    onCancelProcessing();
+  };
+
   return (
     <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -49,12 +58,12 @@ const EditorSidebar: React.FC<EditorSidebarProps> = ({
           timelineClips={timelineClips}
           onVideoUpload={onVideoUpload}
           onGenerateClips={onGenerateClips}
-          onQuickRandomize={onQuickRandomize}
+          onQuickRandomize={handleQuickRandomize}
           onCompile={onCompile}
           isProcessing={isProcessing}
           processingProgress={currentProgress}
           processingStage={currentStage}
-          onCancelProcessing={onCancelProcessing}
+          onCancelProcessing={handleCancelProcessing}
         />
 
         <BackgroundSettings />
