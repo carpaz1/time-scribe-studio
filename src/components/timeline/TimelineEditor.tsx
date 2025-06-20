@@ -6,9 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useProgressTracker } from '@/hooks/useProgressTracker';
 import { VideoClip, CompileRequest } from '@/types/timeline';
 import { VideoCompilerService } from '@/services/videoCompiler';
-import VideoUploadStep from './VideoUploadStep';
-import ConfigurationStep from './ConfigurationStep';
-import RandomizeStep from './RandomizeStep';
+import WorkflowPanel from './WorkflowPanel';
 import ClipLibrary from './ClipLibrary';
 import VideoPlayerSection from './VideoPlayerSection';
 import TimelineMain from './TimelineMain';
@@ -470,6 +468,57 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     }
   };
 
+  const handleQuickRandomize = async (duration: number) => {
+    if (sourceVideos.length === 0) {
+      toast({
+        title: "No videos available",
+        description: "Please upload some videos first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGenerating(true);
+    
+    try {
+      const processor = (await import('@/services/optimizedVideoProcessor')).default.getInstance();
+      const targetClipCount = duration * 60;
+      
+      const randomClips = await processor.generateRandomClips(
+        sourceVideos,
+        targetClipCount,
+        1,
+        (progress, stage) => {
+          setGenerationProgress(progress);
+          console.log(`Quick randomize: ${progress}% - ${stage}`);
+        }
+      );
+
+      setClips(randomClips);
+      setTimelineClips(randomClips);
+      
+      // Auto-compile after generation
+      setTimeout(() => {
+        handleCompile();
+      }, 500);
+      
+      toast({
+        title: `${duration}-minute video generated!`,
+        description: `Created ${randomClips.length} optimized clips and starting compilation`,
+      });
+
+    } catch (error) {
+      console.error('Quick randomize error:', error);
+      toast({
+        title: "Quick randomization failed",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800">
@@ -495,67 +544,36 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         />
         
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar - Made wider and scrollable */}
-          <div className="w-96 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto">
-              <SidebarSection
-                title="1. Upload Videos"
-                isActive={activeStep === 'upload'}
-                onToggle={() => setActiveStep(activeStep === 'upload' ? null : 'upload')}
-              >
-                <VideoUploadStep
-                  sourceVideos={sourceVideos}
-                  onVideoUpload={handleFilesSelected}
-                  onBulkUpload={handleFilesSelected}
-                  onDirectRandomize={handleRandomizeAll}
-                />
-              </SidebarSection>
+          {/* Streamlined Sidebar */}
+          <div className="w-80 bg-slate-800/50 backdrop-blur-sm border-r border-slate-700/50 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* New Workflow Panel */}
+              <WorkflowPanel
+                sourceVideos={sourceVideos}
+                onVideoUpload={handleFilesSelected}
+                onBulkUpload={handleFilesSelected}
+                onQuickRandomize={handleQuickRandomize}
+                onCompile={handleCompile}
+                isProcessing={isGenerating || isCompiling}
+                processingProgress={isGenerating ? generationProgress : compilationProgress}
+                processingStage={isGenerating ? 'Generating clips...' : compilationStage}
+                onCancelProcessing={handleCancelProcessing}
+              />
 
-              <SidebarSection
-                title="2. Configure Settings"
-                isActive={activeStep === 'configure'}
-                onToggle={() => setActiveStep(activeStep === 'configure' ? null : 'configure')}
-              >
-                <ConfigurationStep
-                  config={config}
-                  sourceVideosCount={sourceVideos.length}
-                  onConfigChange={handleConfigChange}
-                />
-              </SidebarSection>
-
-              <SidebarSection
-                title="3. Generate & Randomize"
-                isActive={activeStep === 'randomize'}
-                onToggle={() => setActiveStep(activeStep === 'randomize' ? null : 'randomize')}
-              >
-                <RandomizeStep
-                  onGenerateClips={handleGenerateClips}
-                  onRandomizeAll={handleRandomizeAll}
-                  onRandomizeTimed={handleRandomizeTimed}
-                  onCancelProcessing={handleCancelProcessing}
-                  isGenerating={isGenerating}
-                  generationProgress={generationProgress}
-                  config={config}
-                  onCompile={handleCompile}
-                  sourceVideos={sourceVideos}
-                />
-              </SidebarSection>
-
-              <div className="border-t border-slate-700/50">
-                <ClipLibrary
-                  clips={clips}
-                  sourceVideos={[]}
-                  timelineClips={timelineClips}
-                  onClipAdd={handleAddToTimeline}
-                  onClipsUpdate={setClips}
-                  onSourceVideosUpdate={() => {}}
-                  onClipsGenerated={setClips}
-                  onRandomizeAll={handleRandomizeAll}
-                  onVideoUpload={handleFilesSelected}
-                  onBulkUpload={handleFilesSelected}
-                  progressTracker={progress}
-                />
-              </div>
+              {/* Simplified Clip Library */}
+              <ClipLibrary
+                clips={clips}
+                sourceVideos={[]}
+                timelineClips={timelineClips}
+                onClipAdd={handleAddToTimeline}
+                onClipsUpdate={setClips}
+                onSourceVideosUpdate={() => {}}
+                onClipsGenerated={setClips}
+                onRandomizeAll={handleRandomizeAll}
+                onVideoUpload={handleFilesSelected}
+                onBulkUpload={handleFilesSelected}
+                progressTracker={progress}
+              />
             </div>
           </div>
 
@@ -643,8 +661,6 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   );
 };
 
-export default TimelineEditor;
-
 interface SidebarSectionProps {
   title: string;
   children: React.ReactNode;
@@ -676,3 +692,5 @@ const SidebarSection: React.FC<SidebarSectionProps> = ({ title, children, isActi
     </div>
   );
 };
+
+export default TimelineEditor;
