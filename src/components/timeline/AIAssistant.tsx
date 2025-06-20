@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { VideoClip } from '@/types/timeline';
 import EnhancedAIAssistant from './EnhancedAIAssistant';
 

@@ -1,7 +1,9 @@
 
+import { VideoClip } from '@/types/timeline';
+
 export class ThumbnailService {
   private static instance: ThumbnailService;
-  private generationQueue: Map<string, Promise<string>> = new Map();
+  private thumbnailCache = new Map<string, string>();
 
   static getInstance(): ThumbnailService {
     if (!ThumbnailService.instance) {
@@ -10,105 +12,88 @@ export class ThumbnailService {
     return ThumbnailService.instance;
   }
 
-  async generateThumbnail(file: File, seekTime: number = 1): Promise<string> {
-    const cacheKey = `${file.name}-${file.size}-${seekTime}`;
+  async generateThumbnail(clip: VideoClip, width: number = 120, height: number = 68): Promise<string> {
+    const cacheKey = `${clip.id}-${width}x${height}`;
     
-    // Return existing promise if already generating
-    if (this.generationQueue.has(cacheKey)) {
-      return this.generationQueue.get(cacheKey)!;
+    if (this.thumbnailCache.has(cacheKey)) {
+      return this.thumbnailCache.get(cacheKey)!;
     }
 
-    const promise = this.createThumbnail(file, seekTime);
-    this.generationQueue.set(cacheKey, promise);
-    
     try {
-      const result = await promise;
-      return result;
-    } finally {
-      this.generationQueue.delete(cacheKey);
+      const thumbnail = await this.createVideoThumbnail(clip, width, height);
+      this.thumbnailCache.set(cacheKey, thumbnail);
+      return thumbnail;
+    } catch (error) {
+      console.warn('Failed to generate thumbnail:', error);
+      return this.getPlaceholderThumbnail(width, height);
     }
   }
 
-  private async createThumbnail(file: File, seekTime: number): Promise<string> {
+  private async createVideoThumbnail(clip: VideoClip, width: number, height: number): Promise<string> {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
+      video.muted = true;
+      video.crossOrigin = 'anonymous';
+      
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
       if (!ctx) {
-        reject(new Error('Canvas context not available'));
+        reject(new Error('Could not get canvas context'));
         return;
       }
 
-      const cleanup = () => {
-        if (video.src) {
-          URL.revokeObjectURL(video.src);
-        }
-      };
-
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error('Thumbnail generation timeout'));
-      }, 5000);
+      canvas.width = width;
+      canvas.height = height;
 
       video.addEventListener('loadedmetadata', () => {
-        canvas.width = 160;
-        canvas.height = 90;
-        
-        const targetTime = Math.min(seekTime, video.duration - 0.1);
-        video.currentTime = Math.max(0, targetTime);
-      }, { once: true });
+        video.currentTime = clip.startTime || 0;
+      });
 
       video.addEventListener('seeked', () => {
         try {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-          clearTimeout(timeout);
-          cleanup();
-          resolve(dataUrl);
+          ctx.drawImage(video, 0, 0, width, height);
+          const thumbnail = canvas.toDataURL('image/jpeg', 0.8);
+          URL.revokeObjectURL(video.src);
+          resolve(thumbnail);
         } catch (error) {
-          clearTimeout(timeout);
-          cleanup();
           reject(error);
         }
-      }, { once: true });
+      });
 
       video.addEventListener('error', () => {
-        clearTimeout(timeout);
-        cleanup();
-        reject(new Error('Video load failed'));
-      }, { once: true });
+        reject(new Error('Video load error'));
+      });
 
-      video.muted = true;
-      video.crossOrigin = 'anonymous';
-      video.src = URL.createObjectURL(file);
+      video.src = URL.createObjectURL(clip.sourceFile);
     });
   }
 
-  generateFallbackThumbnail(name: string, duration: number): string {
+  private getPlaceholderThumbnail(width: number, height: number): string {
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d')!;
     
-    if (!ctx) return '';
+    canvas.width = width;
+    canvas.height = height;
     
-    canvas.width = 160;
-    canvas.height = 90;
-    
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, '#6366F1');
-    gradient.addColorStop(1, '#8B5CF6');
+    // Create gradient placeholder
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, '#4f46e5');
+    gradient.addColorStop(1, '#7c3aed');
     
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, width, height);
     
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 14px Arial';
+    // Add play icon
+    ctx.fillStyle = 'white';
+    ctx.font = `${Math.min(width, height) / 3}px Arial`;
     ctx.textAlign = 'center';
-    ctx.fillText('🎬', canvas.width / 2, canvas.height / 2 - 5);
-    
-    ctx.font = '10px Arial';
-    ctx.fillText(`${duration.toFixed(1)}s`, canvas.width / 2, canvas.height / 2 + 15);
+    ctx.fillText('▶', width / 2, height / 2 + 10);
     
     return canvas.toDataURL('image/jpeg', 0.8);
+  }
+
+  clearCache(): void {
+    this.thumbnailCache.clear();
   }
 }

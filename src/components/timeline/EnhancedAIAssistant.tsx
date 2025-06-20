@@ -5,11 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Brain, Zap, Sparkles, Settings, MessageSquare, Send, History, Wand2 } from 'lucide-react';
+import { Brain, Zap, Sparkles, Wand2 } from 'lucide-react';
 import { VideoClip } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
-import { AIEditingService, EditSuggestion, EditCommand } from '@/services/aiEditingService';
-import AIIntegrationService from '@/services/aiIntegration';
+import { AIEditingService, EditSuggestion } from '@/services/aiEditingService';
 
 interface EnhancedAIAssistantProps {
   clips: VideoClip[];
@@ -25,13 +24,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({
   const [suggestions, setSuggestions] = useState<EditSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [hasAISetup, setHasAISetup] = useState(false);
   const { toast } = useToast();
-
-  useEffect(() => {
-    const ai = AIIntegrationService.getInstance();
-    setHasAISetup(ai.hasProviders());
-  }, []);
 
   const generateEditSuggestions = async () => {
     if (clips.length === 0) {
@@ -57,7 +50,7 @@ const EnhancedAIAssistant: React.FC<EnhancedAIAssistantProps> = ({
       console.error('Failed to generate suggestions:', error);
       toast({
         title: "AI suggestion failed",
-        description: "Check your AI configuration in Settings",
+        description: "Could not generate suggestions",
         variant: "destructive",
       });
     } finally {

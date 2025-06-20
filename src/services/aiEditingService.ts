@@ -127,10 +127,10 @@ export class AIEditingService {
         const speedIndex = newClips.findIndex(c => c.id === command.clipId);
         if (speedIndex !== -1 && command.parameters?.speed) {
           const speed = command.parameters.speed;
+          // Note: Speed adjustment affects duration, not a separate property
           newClips[speedIndex] = {
             ...newClips[speedIndex],
-            duration: newClips[speedIndex].duration / speed,
-            playbackSpeed: speed
+            duration: newClips[speedIndex].duration / speed
           };
         }
         break;

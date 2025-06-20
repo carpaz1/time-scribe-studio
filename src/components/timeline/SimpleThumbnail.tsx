@@ -7,7 +7,6 @@ interface SimpleThumbnailProps {
   clip: VideoClip;
   width?: number;
   height?: number;
-  seekTime?: number;
   className?: string;
 }
 
@@ -15,68 +14,46 @@ const SimpleThumbnail: React.FC<SimpleThumbnailProps> = ({
   clip,
   width = 120,
   height = 68,
-  seekTime,
-  className = ''
+  className = '',
 }) => {
-  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+  const [thumbnail, setThumbnail] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    
     const generateThumbnail = async () => {
       setIsLoading(true);
-      setHasError(false);
-      
       try {
         const thumbnailService = ThumbnailService.getInstance();
-        const effectiveSeekTime = seekTime ?? clip.startTime + (clip.duration / 2);
-        const url = await thumbnailService.generateThumbnail(clip.sourceFile, effectiveSeekTime);
-        
-        if (mounted) {
-          setThumbnailUrl(url);
-        }
+        const thumb = await thumbnailService.generateThumbnail(clip, width, height);
+        setThumbnail(thumb);
       } catch (error) {
-        console.warn('Thumbnail generation failed for', clip.name, error);
-        if (mounted) {
-          setHasError(true);
-          const thumbnailService = ThumbnailService.getInstance();
-          const fallback = thumbnailService.generateFallbackThumbnail(clip.name, clip.duration);
-          setThumbnailUrl(fallback);
-        }
+        console.error('Thumbnail generation failed:', error);
       } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     };
 
     generateThumbnail();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [clip.sourceFile, clip.name, clip.duration, seekTime, clip.startTime]);
+  }, [clip.id, width, height]);
 
   if (isLoading) {
     return (
       <div 
-        className={`bg-gradient-to-r from-slate-600 to-slate-700 flex items-center justify-center ${className}`}
+        className={`bg-gradient-to-br from-slate-600 to-slate-700 animate-pulse flex items-center justify-center ${className}`}
         style={{ width, height }}
       >
-        <div className="text-white text-xs animate-pulse">Loading...</div>
+        <div className="text-white text-xs">Loading...</div>
       </div>
     );
   }
 
   return (
     <img
-      src={thumbnailUrl}
+      src={thumbnail}
       alt={clip.name}
       className={`object-cover ${className}`}
       style={{ width, height }}
-      onError={() => setHasError(true)}
+      loading="lazy"
     />
   );
 };

@@ -50,18 +50,23 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
     }
   }, [currentTime, clips, currentClip?.id, videoSrc]);
 
-  // Video time synchronization
+  // Video time synchronization with better validation
   useEffect(() => {
     if (videoRef.current && currentClip && videoSrc) {
       const video = videoRef.current;
       const timeInClip = currentTime - currentClip.position;
-      const targetTime = currentClip.startTime + timeInClip;
+      const targetTime = (currentClip.startTime || 0) + timeInClip;
       
-      if (isFinite(targetTime) && isFinite(video.duration) && video.readyState >= 2) {
-        const clampedTime = Math.max(0, Math.min(targetTime, video.duration));
-        
-        if (Math.abs(video.currentTime - clampedTime) > 0.1) {
-          video.currentTime = clampedTime;
+      // Validate all time values before setting
+      if (
+        isFinite(targetTime) && 
+        isFinite(video.duration) && 
+        video.readyState >= 2 &&
+        targetTime >= 0 &&
+        targetTime <= video.duration
+      ) {
+        if (Math.abs(video.currentTime - targetTime) > 0.1) {
+          video.currentTime = targetTime;
         }
       }
     }
@@ -82,11 +87,12 @@ const CleanVideoPlayer: React.FC<CleanVideoPlayerProps> = ({
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current && currentClip && isPlaying) {
       const video = videoRef.current;
+      const startTime = currentClip.startTime || 0;
       
-      if (isFinite(video.currentTime) && isFinite(currentClip.startTime)) {
-        const timelineTime = currentClip.position + (video.currentTime - currentClip.startTime);
+      if (isFinite(video.currentTime) && isFinite(startTime)) {
+        const timelineTime = currentClip.position + (video.currentTime - startTime);
         
-        if (isFinite(timelineTime)) {
+        if (isFinite(timelineTime) && timelineTime >= 0) {
           onTimeUpdate(timelineTime);
         }
       }
