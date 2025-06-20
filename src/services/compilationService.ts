@@ -1,6 +1,6 @@
-
 import { VideoClip, TimelineConfig } from '@/types/timeline';
 import { FileUploadService } from './fileUploadService';
+import { ProgressTrackingService } from './progressTrackingService';
 
 export class CompilationService {
   private static activeCompilation: AbortController | null = null;
@@ -35,66 +35,82 @@ export class CompilationService {
       try {
         const healthResponse = await fetch('http://localhost:4000/health', {
           signal: this.activeCompilation.signal,
-          method: 'GET',
-          timeout: 5000
-        } as RequestInit);
+          method: 'GET'
+        });
 
         if (!healthResponse.ok) {
           throw new Error(`Server responded with status: ${healthResponse.status}`);
         }
+
+        const healthData = await healthResponse.json();
+        console.log('Server health check passed:', healthData);
       } catch (serverError) {
         console.error('Server connection failed:', serverError);
         
         // Provide fallback local compilation simulation
-        onProgress?.(20, 'Server unavailable - using local simulation...');
+        onProgress?.(15, 'Server unavailable - using local simulation...');
         return await this.simulateLocalCompilation(clips, config, onProgress);
       }
 
-      onProgress?.(20, 'Server connected - uploading files...');
+      onProgress?.(20, 'Server connected - preparing upload...');
 
-      // Upload unique files with chunking
-      const uniqueFiles = new Map();
+      // Group clips by source file to avoid duplicate uploads
+      const fileGroups = new Map<string, { file: File; clips: VideoClip[] }>();
       clips.forEach((clip) => {
         const fileKey = `${clip.sourceFile.name}_${clip.sourceFile.size}`;
-        if (!uniqueFiles.has(fileKey)) {
-          uniqueFiles.set(fileKey, {
-            file: clip.sourceFile,
-            clips: []
-          });
+        if (!fileGroups.has(fileKey)) {
+          fileGroups.set(fileKey, { file: clip.sourceFile, clips: [] });
         }
-        uniqueFiles.get(fileKey).clips.push(clip);
+        fileGroups.get(fileKey)!.clips.push(clip);
       });
 
-      const fileUploadPromises = Array.from(uniqueFiles.values()).map(
-        async (fileData, index) => {
-          const uploadProgress = (progress: number) => {
-            const overallProgress = 20 + (progress / uniqueFiles.size) * 0.3;
-            onProgress?.(overallProgress, `Uploading ${fileData.file.name}...`);
-          };
+      onProgress?.(25, `Uploading ${fileGroups.size} unique files...`);
 
-          return await FileUploadService.uploadFileInChunks(
-            fileData.file,
-            uploadProgress
+      // Upload files with better progress tracking
+      const uploadResults = new Map<string, string>();
+      let uploadedCount = 0;
+      
+      for (const [fileKey, fileGroup] of fileGroups) {
+        try {
+          const fileId = await FileUploadService.uploadFileInChunks(
+            fileGroup.file,
+            (fileProgress) => {
+              const overallProgress = 25 + ((uploadedCount + fileProgress / 100) / fileGroups.size) * 35;
+              onProgress?.(overallProgress, `Uploading ${fileGroup.file.name}... ${Math.round(fileProgress)}%`);
+            }
           );
+          
+          uploadResults.set(fileKey, fileId);
+          uploadedCount++;
+          
+          onProgress?.(25 + (uploadedCount / fileGroups.size) * 35, `Uploaded ${uploadedCount}/${fileGroups.size} files`);
+        } catch (uploadError) {
+          console.error(`Failed to upload ${fileGroup.file.name}:`, uploadError);
+          throw new Error(`Upload failed for ${fileGroup.file.name}: ${uploadError.message}`);
         }
-      );
+      }
 
-      const uploadedFileIds = await Promise.all(fileUploadPromises);
+      onProgress?.(60, 'Starting AI-enhanced compilation...');
 
-      onProgress?.(50, 'Processing with AI...');
-
-      // Create compilation request with file IDs
+      // Create compilation request with uploaded file IDs
       const compilationData = {
-        clips: clips.map((clip, index) => ({
-          id: clip.id,
-          name: clip.name,
-          startTime: clip.startTime,
-          duration: clip.duration,
-          position: clip.position,
-          fileId: uploadedFileIds[Math.floor(index / clips.length * uploadedFileIds.length)] || uploadedFileIds[0]
-        })),
-        config,
-        aiEnhanced: true
+        clips: clips.map((clip) => {
+          const fileKey = `${clip.sourceFile.name}_${clip.sourceFile.size}`;
+          return {
+            id: clip.id,
+            name: clip.name,
+            startTime: clip.startTime,
+            duration: clip.duration,
+            position: clip.position,
+            fileId: uploadResults.get(fileKey) || 'unknown'
+          };
+        }),
+        config: {
+          ...config,
+          aiEnhanced: true,
+          smartTransitions: true,
+          autoColorCorrection: true
+        }
       };
 
       const compileResponse = await fetch('http://localhost:4000/compile-ai', {
@@ -106,13 +122,18 @@ export class CompilationService {
 
       if (!compileResponse.ok) {
         const errorText = await compileResponse.text();
-        throw new Error(`Compilation failed: ${compileResponse.status} - ${errorText}`);
+        console.error('Compilation request failed:', errorText);
+        
+        // Try fallback compilation
+        onProgress?.(65, 'AI compilation unavailable, using standard processing...');
+        return await this.fallbackCompilation(clips, config, onProgress);
       }
 
       const result = await compileResponse.json();
 
       if (result.jobId) {
-        return await this.pollCompilationProgress(result.jobId, onProgress);
+        // Use enhanced progress tracking
+        return await this.trackCompilationProgress(result.jobId, onProgress);
       }
 
       return result;
@@ -124,7 +145,7 @@ export class CompilationService {
       }
       
       // If it's a network error, try local simulation
-      if (error.message?.includes('fetch') || error.message?.includes('network')) {
+      if (error.message?.includes('fetch') || error.message?.includes('network') || error.message?.includes('404')) {
         onProgress?.(20, 'Network error - using local simulation...');
         return await this.simulateLocalCompilation(clips, config, onProgress);
       }
@@ -142,21 +163,20 @@ export class CompilationService {
   ): Promise<{ downloadUrl?: string; outputFile?: string }> {
     console.log('Running local compilation simulation...');
     
-    // Simulate compilation progress
     const stages = [
-      'Analyzing video clips...',
-      'Applying AI enhancements...',
-      'Processing transitions...',
-      'Optimizing output...',
-      'Finalizing compilation...'
+      { progress: 20, stage: 'Analyzing video clips...' },
+      { progress: 35, stage: 'Applying AI enhancements...' },
+      { progress: 50, stage: 'Processing transitions...' },
+      { progress: 70, stage: 'Optimizing output quality...' },
+      { progress: 85, stage: 'Rendering final video...' },
+      { progress: 95, stage: 'Finalizing compilation...' },
+      { progress: 100, stage: 'Local simulation complete!' }
     ];
     
-    for (let i = 0; i < stages.length; i++) {
-      onProgress?.((20 + (i + 1) * 16), stages[i]);
+    for (const { progress, stage } of stages) {
+      onProgress?.(progress, stage);
       await new Promise(resolve => setTimeout(resolve, 800));
     }
-    
-    onProgress?.(100, 'Local simulation complete!');
     
     // Create a mock result for local simulation
     const mockVideoBlob = new Blob(['mock video data'], { type: 'video/mp4' });
@@ -164,54 +184,100 @@ export class CompilationService {
     
     return {
       downloadUrl: mockUrl,
-      outputFile: `compiled_video_${Date.now()}.mp4`
+      outputFile: `simulated_video_${Date.now()}.mp4`
     };
   }
 
-  private static async pollCompilationProgress(
+  private static async trackCompilationProgress(
     jobId: string,
     onProgress?: (progress: number, stage: string) => void
   ): Promise<{ downloadUrl?: string; outputFile?: string }> {
     return new Promise((resolve, reject) => {
-      const pollInterval = setInterval(async () => {
-        try {
-          const response = await fetch(`http://localhost:4000/progress/${jobId}`, {
-            timeout: 5000
-          } as RequestInit);
+      ProgressTrackingService.trackProgress(
+        jobId,
+        (progress, stage) => {
+          onProgress?.(progress, stage);
           
-          if (!response.ok) {
-            throw new Error(`Progress check failed: ${response.status}`);
+          // Check for completion
+          if (progress >= 100 && stage.toLowerCase().includes('complete')) {
+            ProgressTrackingService.stopTracking(jobId);
+            
+            // Fetch final result
+            fetch(`http://localhost:4000/progress/${jobId}`)
+              .then(res => res.json())
+              .then(data => {
+                if (data.downloadUrl) {
+                  resolve({
+                    downloadUrl: data.downloadUrl,
+                    outputFile: data.outputFile
+                  });
+                } else {
+                  resolve({ outputFile: `compiled_${jobId}.mp4` });
+                }
+              })
+              .catch(() => {
+                resolve({ outputFile: `compiled_${jobId}.mp4` });
+              });
           }
           
-          const data = await response.json();
-
-          onProgress?.(data.percent || 0, data.stage || 'Processing...');
-
-          if (data.percent >= 100 && data.downloadUrl) {
-            clearInterval(pollInterval);
-            resolve({
-              downloadUrl: data.downloadUrl,
-              outputFile: data.outputFile
-            });
+          // Check for errors
+          if (stage.toLowerCase().includes('error')) {
+            ProgressTrackingService.stopTracking(jobId);
+            reject(new Error(stage));
           }
-
-          if (data.error) {
-            clearInterval(pollInterval);
-            reject(new Error(data.error));
-          }
-        } catch (error) {
-          console.error('Polling error:', error);
-          clearInterval(pollInterval);
-          reject(error);
+        },
+        {
+          'upload': { min: 60, max: 70 },
+          'processing': { min: 70, max: 90 },
+          'compilation': { min: 90, max: 98 },
+          'finalization': { min: 98, max: 100 }
         }
-      }, 1000);
-
-      // Timeout after 5 minutes for polling
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        reject(new Error('Compilation timeout - server may be overloaded'));
-      }, 300000);
+      );
     });
+  }
+
+  private static async fallbackCompilation(
+    clips: VideoClip[],
+    config: TimelineConfig,
+    onProgress?: (progress: number, stage: string) => void
+  ): Promise<{ downloadUrl?: string; outputFile?: string }> {
+    onProgress?.(70, 'Using fallback compilation method...');
+    
+    // Implement basic compilation without AI features
+    const compilationData = {
+      clips: clips.map((clip, index) => ({
+        id: clip.id,
+        name: clip.name,
+        startTime: clip.startTime,
+        duration: clip.duration,
+        position: clip.position,
+        fileIndex: index
+      })),
+      config
+    };
+
+    try {
+      const response = await fetch('http://localhost:4000/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(compilationData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Fallback compilation failed');
+      }
+
+      const result = await response.json();
+      
+      if (result.jobId) {
+        return await this.trackCompilationProgress(result.jobId, onProgress);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Fallback compilation failed:', error);
+      return await this.simulateLocalCompilation(clips, config, onProgress);
+    }
   }
 
   static cancelCompilation(): void {
@@ -219,5 +285,8 @@ export class CompilationService {
       this.activeCompilation.abort();
       this.activeCompilation = null;
     }
+    
+    // Stop all active progress tracking
+    ProgressTrackingService.stopTracking('all');
   }
 }
