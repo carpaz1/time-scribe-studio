@@ -303,18 +303,87 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
     });
   };
 
-  const handleRandomizeTimed = (duration: number) => {
-    const numClips = duration * 60;
-    const availableClips = [...clips];
-    const selectedClips: VideoClip[] = [];
-
-    for (let i = 0; i < numClips && availableClips.length > 0; i++) {
-      const randomIndex = Math.floor(Math.random() * availableClips.length);
-      selectedClips.push(availableClips[randomIndex]);
-      availableClips.splice(randomIndex, 1);
+  const handleRandomizeTimed = async (duration: number) => {
+    if (sourceVideos.length === 0) {
+      toast({
+        title: "No videos available",
+        description: "Please upload some videos first",
+        variant: "destructive",
+      });
+      return;
     }
 
-    setTimelineClips(selectedClips.map((clip, index) => ({ ...clip, position: index })));
+    setIsGenerating(true);
+    
+    try {
+      const targetDurationSeconds = duration * 60;
+      const newClips: VideoClip[] = [];
+      
+      // Generate exactly the number of 1-second clips needed
+      const availableVideos = sourceVideos.filter((file: File) => {
+        // Create a video element to check duration
+        const video = document.createElement('video');
+        const objectUrl = URL.createObjectURL(file);
+        video.src = objectUrl;
+        return new Promise<boolean>((resolve) => {
+          video.addEventListener('loadedmetadata', () => {
+            const isValid = video.duration >= 1;
+            URL.revokeObjectURL(objectUrl);
+            resolve(isValid);
+          });
+        });
+      });
+      
+      const clipsNeeded = Math.min(targetDurationSeconds, sourceVideos.length * 5); // Max 5 clips per video
+      
+      for (let i = 0; i < clipsNeeded; i++) {
+        const videoIndex = i % sourceVideos.length;
+        const video = sourceVideos[videoIndex];
+        
+        // Create a video element to get duration
+        const videoElement = document.createElement('video');
+        const objectUrl = URL.createObjectURL(video);
+        videoElement.src = objectUrl;
+        
+        await new Promise((resolve) => {
+          videoElement.addEventListener('loadedmetadata', () => {
+            const startTime = Math.random() * Math.max(0, videoElement.duration - 1);
+            
+            const randomClip: VideoClip = {
+              id: `timed-${Date.now()}-${i}`,
+              name: `Timed ${i}`,
+              sourceFile: video,
+              startTime,
+              duration: 1, // Always use 1-second clips
+              thumbnail: '',
+              position: i,
+            };
+            newClips.push(randomClip);
+            URL.revokeObjectURL(objectUrl);
+            resolve(null);
+          });
+        });
+      }
+
+      // Set both clips and timeline clips
+      setClips(newClips);
+      setTimelineClips(newClips);
+      
+      toast({
+        title: `${duration}-minute randomization complete!`,
+        description: `Generated ${newClips.length} 1-second clips, ready for compilation`,
+      });
+
+    } catch (error) {
+      console.error('Timed randomize error:', error);
+      toast({
+        title: "Timed randomization failed",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleCancelProcessing = async () => {
@@ -453,6 +522,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
                   isGenerating={isGenerating}
                   generationProgress={generationProgress}
                   config={config}
+                  onCompile={handleCompile}
+                  sourceVideos={sourceVideos}
                 />
               </SidebarSection>
 

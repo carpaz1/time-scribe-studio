@@ -14,6 +14,8 @@ interface RandomizeStepProps {
   isGenerating: boolean;
   generationProgress: number;
   config: any;
+  onCompile: () => void;
+  sourceVideos: File[];
 }
 
 const RandomizeStep: React.FC<RandomizeStepProps> = ({
@@ -24,6 +26,8 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
   isGenerating,
   generationProgress,
   config,
+  onCompile,
+  sourceVideos,
 }) => {
   const [timedRandomizeDuration, setTimedRandomizeDuration] = useState<1 | 2 | 5>(1);
 
@@ -36,8 +40,23 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
     onGenerateClips(finalConfig);
   };
 
-  const handleTimedRandomize = () => {
-    onRandomizeTimed(timedRandomizeDuration);
+  const handleTimedRandomizeAndCompile = async (duration: number) => {
+    if (sourceVideos.length === 0) {
+      console.warn('No source videos available for randomize and compile');
+      return;
+    }
+
+    try {
+      // First generate the clips for the specified duration
+      await onRandomizeTimed(duration);
+      
+      // Then automatically trigger compilation
+      setTimeout(() => {
+        onCompile();
+      }, 500); // Small delay to ensure clips are generated first
+    } catch (error) {
+      console.error('Error in randomize and compile:', error);
+    }
   };
 
   return (
@@ -54,7 +73,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={handleGenerateClips}
-              disabled={isGenerating}
+              disabled={isGenerating || sourceVideos.length === 0}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               Generate Clips
@@ -63,6 +82,7 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
               onClick={onRandomizeAll}
               variant="outline"
               className="border-slate-600 text-slate-300"
+              disabled={isGenerating}
             >
               <Shuffle className="w-4 h-4 mr-2" />
               Randomize
@@ -70,10 +90,10 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
           </div>
         </div>
 
-        {/* Timed Randomize Section */}
+        {/* One-Click Randomize & Compile Section */}
         <div className="border-t border-slate-600 pt-4">
           <Label className="text-slate-300 mb-3 block text-sm font-medium">
-            Timed Randomize & Compile (1s clips)
+            One-Click Randomize & Compile
           </Label>
           <div className="space-y-3">
             <Select 
@@ -90,9 +110,9 @@ const RandomizeStep: React.FC<RandomizeStepProps> = ({
               </SelectContent>
             </Select>
             <Button
-              onClick={handleTimedRandomize}
-              disabled={isGenerating}
-              className="w-full bg-indigo-600 hover:bg-indigo-700"
+              onClick={() => handleTimedRandomizeAndCompile(timedRandomizeDuration)}
+              disabled={isGenerating || sourceVideos.length === 0}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold"
             >
               <Clock className="w-4 h-4 mr-2" />
               Randomize & Compile ({timedRandomizeDuration} min)
