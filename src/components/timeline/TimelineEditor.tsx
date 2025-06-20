@@ -357,6 +357,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
           <ClipLibrary
             clips={clips}
             sourceVideos={sourceVideos}
+            timelineClips={timelineClips}
             onClipAdd={handleClipAddWithToast}
             onClipsUpdate={setClips}
             onSourceVideosUpdate={handleSourceVideosUpdate}

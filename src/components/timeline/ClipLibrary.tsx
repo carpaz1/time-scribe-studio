@@ -1,26 +1,21 @@
 import React, { useState } from 'react';
 import { Settings, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { VideoClip, SourceVideo } from '@/types/timeline';
 import { useToast } from '@/hooks/use-toast';
-import { VideoClip } from '@/types/timeline';
 import VideoUploader from './VideoUploader';
-import LibraryClipThumbnail from './LibraryClipThumbnail';
 import BulkDirectorySelector from './BulkDirectorySelector';
-import SettingsPanel from './SettingsPanel';
-import ClipGenerationPanel from './ClipGenerationPanel';
+import LibraryClipThumbnail from './LibraryClipThumbnail';
 import LibraryStats from './LibraryStats';
 import EmptyLibraryState from './EmptyLibraryState';
-
-interface SourceVideo {
-  name: string;
-  file: File;
-  duration: number;
-}
+import ClipGenerationPanel from './ClipGenerationPanel';
+import ClipLimitManager from './ClipLimitManager';
 
 interface ClipLibraryProps {
   clips: VideoClip[];
   sourceVideos: SourceVideo[];
+  timelineClips: VideoClip[];
   onClipAdd: (clip: VideoClip) => void;
   onClipsUpdate: (clips: VideoClip[]) => void;
   onSourceVideosUpdate: (videos: SourceVideo[]) => void;
@@ -33,6 +28,7 @@ interface ClipLibraryProps {
 const ClipLibrary: React.FC<ClipLibraryProps> = ({
   clips,
   sourceVideos,
+  timelineClips,
   onClipAdd,
   onClipsUpdate,
   onSourceVideosUpdate,
@@ -43,186 +39,94 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
+
   const { toast } = useToast();
 
-  const handleVideoUpload = (files: File[]) => {
-    onVideoUpload(files);
-  };
-
-  const handleBulkUpload = (files: File[]) => {
-    onBulkUpload(files);
-  };
-
-  const handleBulkClipsGenerated = (generatedClips: VideoClip[]) => {
-    onClipsUpdate([...clips, ...generatedClips]);
-    onClipsGenerated(generatedClips);
-  };
-
-  const createThumbnail = async (file: File, startTime: number = 0): Promise<string> => {
-    return new Promise((resolve) => {
-      const video = document.createElement('video');
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-
-      video.onloadedmetadata = () => {
-        canvas.width = 160;
-        canvas.height = 90;
-        video.currentTime = Math.min(startTime + 1, video.duration / 2);
-      };
-
-      video.onseeked = () => {
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL());
-        }
-      };
-
-      video.onerror = () => {
-        // Fallback thumbnail
-        if (ctx) {
-          canvas.width = 160;
-          canvas.height = 90;
-          ctx.fillStyle = '#374151';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = '#9CA3AF';
-          ctx.font = '12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('📽️', canvas.width / 2, canvas.height / 2);
-          resolve(canvas.toDataURL());
-        }
-      };
-
-      video.src = URL.createObjectURL(file);
-    });
-  };
-
-  const generateClips = async (config: { numClips: number; clipDuration: number; videoSelectionMode: 'all' | 'specific'; numVideos: number }) => {
-    if (sourceVideos.length === 0) {
-      toast({
-        title: "No videos uploaded",
-        description: "Please upload some videos first",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const generateClips = (config: any) => {
     setIsGenerating(true);
     setGenerationProgress(0);
 
-    try {
-      const newClips: VideoClip[] = [];
-      
-      // Determine which videos to process
-      let videosToProcess = sourceVideos;
-      if (config.videoSelectionMode === 'specific') {
-        // Randomly select the specified number of videos
-        const shuffled = [...sourceVideos].sort(() => Math.random() - 0.5);
-        videosToProcess = shuffled.slice(0, config.numVideos);
+    const generatedClips = [];
+    const totalClips = config.numClips * config.numVideos;
+    let clipsGenerated = 0;
+
+    for (let i = 0; i < config.numVideos; i++) {
+      const video = sourceVideos[i % sourceVideos.length];
+      if (!video) continue;
+
+      for (let j = 0; j < config.numClips; j++) {
+        const startTime = Math.random() * (video.duration - config.clipDuration);
+        const endTime = startTime + config.clipDuration;
+
+        const newClip: VideoClip = {
+          id: `clip-${Date.now()}-${Math.random()}`,
+          name: `Clip ${i}-${j}`,
+          source: video.file,
+          startTime,
+          endTime,
+          duration: config.clipDuration,
+          sourceVideoId: video.id,
+          thumbnail: video.thumbnail,
+        };
+        generatedClips.push(newClip);
+        clipsGenerated++;
+
+        const progress = (clipsGenerated / totalClips) * 100;
+        setGenerationProgress(progress);
       }
-      
-      for (let i = 0; i < videosToProcess.length; i++) {
-        const sourceVideo = videosToProcess[i];
-        setGenerationProgress(((i + 1) / videosToProcess.length) * 100);
-        
-        const duration = sourceVideo.duration;
-        
-        if (duration > 0) {
-          // Generate specified number of clips per video
-          const clipsPerVideo = Math.min(config.numClips, Math.max(1, Math.floor(duration / config.clipDuration)));
-          
-          for (let j = 0; j < clipsPerVideo; j++) {
-            const maxStartTime = Math.max(0, duration - config.clipDuration);
-            const startTime = maxStartTime > 0 ? (maxStartTime / clipsPerVideo) * j : 0;
-            const clipDuration = Math.min(config.clipDuration, duration - startTime);
-            
-            if (clipDuration > 0.5) {
-              // Generate thumbnail for this clip
-              const thumbnail = await createThumbnail(sourceVideo.file, startTime);
-              
-              const clip: VideoClip = {
-                id: `${Date.now()}-${i}-${j}`,
-                name: `${sourceVideo.name} - Clip ${j + 1}`,
-                sourceFile: sourceVideo.file,
-                startTime,
-                duration: clipDuration,
-                position: 0,
-                thumbnail,
-              };
-              newClips.push(clip);
-            }
-          }
-        }
-      }
-      
-      onClipsUpdate([...clips, ...newClips]);
-      onClipsGenerated(newClips);
-      
-      const processedVideosText = config.videoSelectionMode === 'all' 
-        ? `all ${videosToProcess.length} videos` 
-        : `${videosToProcess.length} selected videos`;
-      
-      toast({
-        title: "Clips generated successfully!",
-        description: `Created ${newClips.length} clips from ${processedVideosText}`,
-      });
-    } catch (error) {
-      console.error('Error generating clips:', error);
-      toast({
-        title: "Generation failed",
-        description: error instanceof Error ? error.message : "Failed to generate clips",
-        variant: "destructive",
-      });
-    } finally {
-      setIsGenerating(false);
-      setGenerationProgress(0);
     }
+
+    onClipsGenerated(generatedClips);
+    setIsGenerating(false);
+  };
+
+  const handleClearOldestClips = () => {
+    const sortedClips = [...clips].sort((a, b) => {
+      const aTime = a.id.includes('-') ? parseInt(a.id.split('-')[1]) : 0;
+      const bTime = b.id.includes('-') ? parseInt(b.id.split('-')[1]) : 0;
+      return aTime - bTime;
+    });
+    
+    const clipsToClear = Math.min(50, Math.floor(clips.length * 0.3));
+    const remainingClips = sortedClips.slice(clipsToClear);
+    
+    onClipsUpdate(remainingClips);
+    toast({
+      title: "Clips cleared",
+      description: `Removed ${clipsToClear} oldest clips to improve performance`,
+    });
+  };
+
+  const handleClearUnusedClips = () => {
+    const timelineClipIds = new Set(timelineClips.map(clip => clip.id));
+    const usedClips = clips.filter(clip => timelineClipIds.has(clip.id));
+    
+    const clearedCount = clips.length - usedClips.length;
+    onClipsUpdate(usedClips);
+    toast({
+      title: "Unused clips cleared",
+      description: `Removed ${clearedCount} unused clips`,
+    });
   };
 
   return (
-    <div className="h-full bg-gradient-to-b from-slate-800/90 to-slate-900/95 backdrop-blur-sm border-r border-slate-700/50 flex flex-col">
+    <div className="w-full h-full bg-gradient-to-b from-slate-800/60 to-slate-900/80 backdrop-blur-sm border-r border-slate-700/50 flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-slate-700/50 bg-slate-800/60 backdrop-blur-sm">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg">
-              <Film className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white">Clip Library</h2>
-              <p className="text-xs text-slate-400">Manage your video clips</p>
-            </div>
+      <div className="p-4 border-b border-slate-700/50 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Film className="w-5 h-5 text-slate-400" />
+            <h2 className="text-lg font-semibold text-slate-200">Clip Library</h2>
           </div>
-          <Button
-            onClick={() => setShowSettings(true)}
-            variant="ghost"
-            size="sm"
-            className="text-slate-400 hover:text-white hover:bg-slate-700/50"
-          >
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
-
-        {/* Stats Cards */}
-        <LibraryStats 
-          sourceVideosCount={sourceVideos.length}
-          clipsCount={clips.length}
-        />
-
-        {/* Upload Section */}
-        <VideoUploader onVideoUpload={handleVideoUpload} />
-        
-        <div className="mt-3">
-          <BulkDirectorySelector 
-            onBulkUpload={handleBulkUpload} 
-            onClipsGenerated={handleBulkClipsGenerated}
+          <LibraryStats
+            clips={clips}
+            sourceVideos={sourceVideos}
           />
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Generation Section with Configuration */}
+        {/* Clip Generation Panel */}
         <ClipGenerationPanel
           sourceVideosCount={sourceVideos.length}
           isGenerating={isGenerating}
@@ -232,29 +136,44 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
           clipsCount={clips.length}
         />
 
-        {/* Clips Grid */}
-        <div className="flex-1 overflow-y-auto p-4">
+        {/* Add Clip Limit Manager */}
+        <div className="px-4">
+          <ClipLimitManager
+            clips={clips}
+            timelineClips={timelineClips}
+            onClearOldest={handleClearOldestClips}
+            onClearUnused={handleClearUnusedClips}
+          />
+        </div>
+
+        {/* Uploader Section */}
+        <div className="p-4 border-b border-slate-700/50 shrink-0">
+          <h3 className="text-sm font-semibold text-slate-200 mb-2">Add Media</h3>
+          <div className="flex space-x-2">
+            <VideoUploader onVideoUpload={onVideoUpload} />
+            <BulkDirectorySelector onBulkUpload={onBulkUpload} />
+          </div>
+        </div>
+
+        {/* Clip List */}
+        <div className="flex-1 overflow-auto">
           {clips.length === 0 ? (
-            <EmptyLibraryState onVideoUpload={handleVideoUpload} />
+            <EmptyLibraryState sourceVideos={sourceVideos} />
           ) : (
-            <div className="grid grid-cols-1 gap-3">
-              {clips.map((clip) => (
-                <LibraryClipThumbnail
-                  key={clip.id}
-                  clip={clip}
-                  onAdd={() => onClipAdd(clip)}
-                />
-              ))}
-            </div>
+            <ScrollArea className="h-full">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 p-4">
+                {clips.map((clip) => (
+                  <LibraryClipThumbnail
+                    key={clip.id}
+                    clip={clip}
+                    onClipAdd={() => onClipAdd(clip)}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
           )}
         </div>
       </div>
-
-      {/* Settings Panel */}
-      <SettingsPanel 
-        isOpen={showSettings} 
-        onClose={() => setShowSettings(false)} 
-      />
     </div>
   );
 };
