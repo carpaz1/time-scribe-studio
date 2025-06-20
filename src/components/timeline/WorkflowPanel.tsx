@@ -1,14 +1,14 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Upload, Zap, Play, Image, X, Sparkles, Clock, FileVideo, Cpu, Brain, AlertTriangle } from 'lucide-react';
+import { Upload, X, Sparkles, FileVideo, Cpu, Brain, AlertTriangle, Image } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import WorkflowControls from './WorkflowControls';
 
 interface WorkflowPanelProps {
   sourceVideos: File[];
@@ -94,7 +94,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
       return;
     }
 
-    // Check for large files before processing
     const largeFiles = sourceVideos.filter(file => file.size > MAX_FILE_SIZE);
     if (largeFiles.length > 0) {
       toast({
@@ -106,18 +105,6 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
     }
 
     onQuickRandomize(selectedDuration, includePictures);
-  };
-
-  const handlePicturesToggle = (checked: boolean | "indeterminate") => {
-    setIncludePictures(checked === true);
-  };
-
-  const handleGPUToggle = (checked: boolean | "indeterminate") => {
-    setUseGPUAcceleration(checked === true);
-  };
-
-  const handleAIToggle = (checked: boolean | "indeterminate") => {
-    setAiEnhancement(checked === true);
   };
 
   return (
@@ -151,7 +138,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
           </Alert>
         )}
 
-        {/* Step 1: Upload with Enhanced Options */}
+        {/* Upload Section */}
         <div className="space-y-3">
           <Label className="text-slate-300 text-sm font-medium block flex items-center">
             <Upload className="w-4 h-4 mr-2" />
@@ -165,7 +152,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 <Checkbox 
                   id="gpu-accel" 
                   checked={useGPUAcceleration}
-                  onCheckedChange={handleGPUToggle}
+                  onCheckedChange={(checked) => setUseGPUAcceleration(checked === true)}
                   disabled={isProcessing}
                 />
                 <label htmlFor="gpu-accel" className="text-xs text-slate-300 flex items-center">
@@ -178,7 +165,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 <Checkbox 
                   id="ai-enhance" 
                   checked={aiEnhancement}
-                  onCheckedChange={handleAIToggle}
+                  onCheckedChange={(checked) => setAiEnhancement(checked === true)}
                   disabled={isProcessing}
                 />
                 <label htmlFor="ai-enhance" className="text-xs text-slate-300 flex items-center">
@@ -191,7 +178,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
                 <Checkbox 
                   id="include-pictures" 
                   checked={includePictures}
-                  onCheckedChange={handlePicturesToggle}
+                  onCheckedChange={(checked) => setIncludePictures(checked === true)}
                   disabled={isProcessing}
                 />
                 <label htmlFor="include-pictures" className="text-xs text-slate-300 flex items-center">
@@ -260,91 +247,16 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = ({
               2. AI-Powered Generation & Compilation
             </Label>
 
-            <Tabs value={activeWorkflow} onValueChange={(value) => setActiveWorkflow(value as 'quick' | 'ai' | 'custom')}>
-              <TabsList className="grid w-full grid-cols-3 bg-slate-700/50 h-8">
-                <TabsTrigger value="ai" className="text-xs flex items-center">
-                  <Brain className="w-3 h-3 mr-1" />
-                  AI Auto
-                </TabsTrigger>
-                <TabsTrigger value="quick" className="text-xs flex items-center">
-                  <Zap className="w-3 h-3 mr-1" />
-                  Quick
-                </TabsTrigger>
-                <TabsTrigger value="custom" className="text-xs flex items-center">
-                  <Clock className="w-3 h-3 mr-1" />
-                  Manual
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="ai" className="space-y-3 mt-3">
-                <Select 
-                  value={selectedDuration.toString()} 
-                  onValueChange={(value) => setSelectedDuration(Number(value) as 1 | 2 | 5)}
-                  disabled={isProcessing}
-                >
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">🧠 1 min - AI Smart Cuts</SelectItem>
-                    <SelectItem value="2">🎯 2 min - AI Balanced Flow</SelectItem>
-                    <SelectItem value="5">🎬 5 min - AI Cinematic</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  onClick={handleQuickGenerate}
-                  disabled={isProcessing || sourceVideos.length === 0}
-                  className="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-700 text-xs px-2 py-1 h-8"
-                >
-                  <Brain className="w-3 h-3 mr-1" />
-                  {isProcessing ? 'AI Processing...' : `AI Generate ${selectedDuration}min Video`}
-                </Button>
-                {!isProcessing && (
-                  <div className="text-xs text-slate-400 text-center">
-                    🧠 GPU-accelerated AI with smart scene detection & transitions
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="quick" className="space-y-3 mt-3">
-                <Select 
-                  value={selectedDuration.toString()} 
-                  onValueChange={(value) => setSelectedDuration(Number(value) as 1 | 2 | 5)}
-                  disabled={isProcessing}
-                >
-                  <SelectTrigger className="h-8">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">⚡ 1 min (60 clips) - Fast & Sharp</SelectItem>
-                    <SelectItem value="2">🎯 2 min (120 clips) - Balanced</SelectItem>
-                    <SelectItem value="5">🎬 5 min (300 clips) - Extended</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  onClick={handleQuickGenerate}
-                  disabled={isProcessing || sourceVideos.length === 0}
-                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-xs px-2 py-1 h-8"
-                >
-                  <Zap className="w-3 h-3 mr-1" />
-                  {isProcessing ? 'GPU Processing...' : `Quick Generate ${selectedDuration}min`}
-                </Button>
-              </TabsContent>
-              
-              <TabsContent value="custom" className="space-y-3 mt-3">
-                <div className="text-xs text-slate-400 p-2 bg-slate-700/20 rounded">
-                  Manual timeline creation with AI assistance available
-                </div>
-                <Button
-                  onClick={onCompile}
-                  disabled={isProcessing || sourceVideos.length === 0}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs px-2 py-1 h-8"
-                >
-                  <Play className="w-3 h-3 mr-1" />
-                  Compile Timeline
-                </Button>
-              </TabsContent>
-            </Tabs>
+            <WorkflowControls
+              selectedDuration={selectedDuration}
+              onDurationChange={setSelectedDuration}
+              onQuickGenerate={handleQuickGenerate}
+              onCompile={onCompile}
+              isProcessing={isProcessing}
+              sourceVideosLength={sourceVideos.length}
+              activeWorkflow={activeWorkflow}
+              onWorkflowChange={setActiveWorkflow}
+            />
           </div>
         )}
 
