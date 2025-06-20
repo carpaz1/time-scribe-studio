@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Settings, Film } from 'lucide-react';
+import { Settings, Film, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { VideoClip, SourceVideo } from '@/types/timeline';
@@ -12,6 +11,7 @@ import LibraryStats from './LibraryStats';
 import EmptyLibraryState from './EmptyLibraryState';
 import ClipGenerationPanel from './ClipGenerationPanel';
 import ClipLimitManager from './ClipLimitManager';
+import { VideoCompilerService } from '@/services/videoCompiler';
 
 interface ClipLibraryProps {
   clips: VideoClip[];
@@ -40,6 +40,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [isRandomEverything, setIsRandomEverything] = useState(false);
 
   const { toast } = useToast();
 
@@ -61,14 +62,12 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
       for (let j = 0; j < config.numClips; j++) {
         const startTime = Math.random() * (video.duration - config.clipDuration);
-        const endTime = startTime + config.clipDuration;
 
         const newClip: VideoClip = {
           id: `clip-${Date.now()}-${Math.random()}`,
           name: `Clip ${i}-${j}`,
           sourceFile: video.file,
           startTime,
-          endTime: endTime,
           duration: config.clipDuration,
           thumbnail: video.thumbnail,
           position: 0,
@@ -84,6 +83,83 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
     onClipsGenerated(generatedClips);
     setIsGenerating(false);
+  };
+
+  const handleRandomEverything = async () => {
+    if (sourceVideos.length === 0) {
+      toast({
+        title: "No videos available",
+        description: "Please upload some videos first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRandomEverything(true);
+    
+    try {
+      // Generate 3 random 1-second clips from every video
+      const randomClips: VideoClip[] = [];
+      
+      sourceVideos.forEach((video, videoIndex) => {
+        for (let clipIndex = 0; clipIndex < 3; clipIndex++) {
+          const startTime = Math.random() * Math.max(0, video.duration - 1);
+          
+          const randomClip: VideoClip = {
+            id: `random-${Date.now()}-${videoIndex}-${clipIndex}`,
+            name: `Random ${videoIndex}-${clipIndex}`,
+            sourceFile: video.file,
+            startTime,
+            duration: 1, // 1 second clips
+            thumbnail: video.thumbnail,
+            position: clipIndex, // Sequential positioning
+            originalVideoId: video.id,
+          };
+          randomClips.push(randomClip);
+        }
+      });
+
+      // Clear existing clips and add random ones
+      onClipsUpdate(randomClips);
+      
+      // Auto-compile the timeline
+      const config = {
+        totalDuration: randomClips.length, // 1 second per clip
+        clipOrder: randomClips.map(clip => clip.id),
+        zoom: 1,
+        playheadPosition: 0,
+      };
+
+      toast({
+        title: "RANDOM EVERYTHING initiated!",
+        description: `Generated ${randomClips.length} random clips and starting compilation...`,
+      });
+
+      // Start compilation
+      await VideoCompilerService.compileTimeline(
+        randomClips,
+        config,
+        undefined,
+        (progress: number, stage: string) => {
+          console.log(`Random compilation progress: ${progress}% - ${stage}`);
+        }
+      );
+
+      toast({
+        title: "RANDOM EVERYTHING complete!",
+        description: "Your random video compilation is ready for download!",
+      });
+
+    } catch (error) {
+      console.error('Random everything error:', error);
+      toast({
+        title: "Random everything failed",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRandomEverything(false);
+    }
   };
 
   const handleClearOldestClips = () => {
@@ -132,6 +208,22 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
+        {/* FUCK IT RANDOM EVERYTHING Button */}
+        <div className="p-4 border-b border-slate-700/50 bg-gradient-to-r from-red-900/30 to-orange-900/30">
+          <Button
+            onClick={handleRandomEverything}
+            disabled={sourceVideos.length === 0 || isRandomEverything}
+            className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-bold text-sm"
+            size="sm"
+          >
+            <Zap className="w-4 h-4 mr-2" />
+            {isRandomEverything ? 'RANDOMIZING...' : 'FUCK IT RANDOM EVERYTHING.'}
+          </Button>
+          <p className="text-xs text-slate-400 mt-1 text-center">
+            3 random 1-second clips from every video → instant compilation
+          </p>
+        </div>
+
         {/* Clip Generation Panel */}
         <ClipGenerationPanel
           sourceVideosCount={sourceVideos.length}
