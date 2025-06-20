@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen } from 'lucide-react';
+import { X, Download, Trash2, AlertTriangle, Folder, FolderOpen, GitPull, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -15,30 +15,38 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateStage, setUpdateStage] = useState('');
+  const [gitError, setGitError] = useState<string>('');
   const { toast } = useToast();
-  const { saveFolder, selectFolder, resetToDefault } = useSaveFolder();
+  const { saveFolder, selectFolder, resetToDefault, saveToFolder } = useSaveFolder();
 
   if (!isOpen) return null;
 
-  const handleGitPull = async () => {
+  const handleGitPull = async (force = false) => {
     setIsUpdating(true);
     setUpdateProgress(0);
+    setGitError('');
     setUpdateStage('Starting git pull...');
     
     try {
-      // Execute git pull command
-      const response = await fetch('http://localhost:4000/git-pull', {
+      const endpoint = force ? 'http://localhost:4000/git-pull-force' : 'http://localhost:4000/git-pull';
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
       });
 
-      if (!response.ok) {
-        throw new Error(`Git pull failed: ${response.statusText}`);
-      }
-
       const result = await response.json();
+
+      if (!response.ok) {
+        if (result.error && result.error.includes('overwritten by merge')) {
+          setGitError('Git merge conflict detected. Local changes would be overwritten.');
+          setUpdateStage('Merge conflict detected');
+          return;
+        }
+        throw new Error(result.error || `Git pull failed: ${response.statusText}`);
+      }
       
       // Simulate progress for visual feedback
       const stages = [
@@ -62,15 +70,37 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
       
     } catch (error) {
       console.error('Git pull error:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to pull latest changes from repository.";
+      setGitError(errorMessage);
       toast({
         title: "Git pull failed",
-        description: error instanceof Error ? error.message : "Failed to pull latest changes from repository.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsUpdating(false);
       setUpdateProgress(0);
-      setUpdateStage('');
+      if (!gitError) {
+        setUpdateStage('');
+      }
+    }
+  };
+
+  const handleFolderSelect = async () => {
+    try {
+      const result = await selectFolder();
+      if (result.folderPath) {
+        toast({
+          title: "Folder selected",
+          description: `Downloads will be saved to: ${result.folderPath}`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error selecting folder",
+        description: "Failed to select folder. Using default Downloads folder.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -172,7 +202,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Button
-                  onClick={selectFolder}
+                  onClick={handleFolderSelect}
                   className="bg-blue-600 hover:bg-blue-700"
                 >
                   <FolderOpen className="w-4 h-4 mr-2" />
@@ -198,7 +228,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
           <Card className="bg-slate-700/50 border-slate-600">
             <CardHeader>
               <CardTitle className="text-lg text-white flex items-center gap-2">
-                <Download className="w-5 h-5" />
+                <GitPull className="w-5 h-5" />
                 Git Repository Updates
               </CardTitle>
             </CardHeader>
@@ -206,6 +236,37 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
               <p className="text-sm text-slate-300">
                 Pull the latest changes from the git repository.
               </p>
+              
+              {gitError && (
+                <Card className="border-red-500 bg-red-500/10">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+                      <div className="space-y-2">
+                        <span className="text-sm text-red-300">{gitError}</span>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => handleGitPull(true)}
+                            disabled={isUpdating}
+                            size="sm"
+                            className="bg-red-600 hover:bg-red-700 text-xs"
+                          >
+                            Force Update (Discard Local Changes)
+                          </Button>
+                          <Button
+                            onClick={() => setGitError('')}
+                            variant="outline"
+                            size="sm"
+                            className="text-xs border-slate-600"
+                          >
+                            Dismiss
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
               
               {isUpdating && (
                 <div className="space-y-2">
@@ -218,7 +279,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose }) => {
               )}
               
               <Button
-                onClick={handleGitPull}
+                onClick={() => handleGitPull(false)}
                 disabled={isUpdating}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
