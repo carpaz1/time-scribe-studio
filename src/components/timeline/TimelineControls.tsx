@@ -1,6 +1,5 @@
-
 import React, { memo } from 'react';
-import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive } from 'lucide-react';
+import { Play, Pause, ZoomIn, ZoomOut, Upload, Download, RotateCcw, ExternalLink, Trash2, Square, Archive, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 
@@ -18,6 +17,7 @@ interface TimelineControlsProps {
   onExportJSON: () => void;
   onCompile: () => void;
   onDownloadClips: () => void;
+  onOpenSettings: () => void;
   lastCompilationResult?: { downloadUrl?: string; outputFile?: string };
 }
 
@@ -35,6 +35,7 @@ const TimelineControls: React.FC<TimelineControlsProps> = memo(({
   onExportJSON,
   onCompile,
   onDownloadClips,
+  onOpenSettings,
   lastCompilationResult,
 }) => {
   // Only log when actually compiling or when significant state changes
@@ -152,6 +153,16 @@ const TimelineControls: React.FC<TimelineControlsProps> = memo(({
           <span className="ml-2">Export JSON</span>
         </Button>
       </div>
+
+      {/* Settings Button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onOpenSettings}
+        className="hover:bg-slate-600/50 text-slate-300 hover:text-white border-0 h-9 w-9"
+      >
+        <Settings className="w-4 h-4" />
+      </Button>
 
       {/* COMPILE BUTTON - Made more prominent */}
       <Button
