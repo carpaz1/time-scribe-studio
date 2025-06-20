@@ -217,7 +217,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
           </Button>
         </div>
 
-        {/* Organized Video Selection Panel */}
+        {/* NEW: Organized Video Selection Panel (Steps 1-5) */}
         <div className="p-4">
           <VideoSelectionPanel
             sourceVideos={sourceVideos}

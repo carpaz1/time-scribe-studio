@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { VideoClip, SourceVideo, CompileRequest } from '@/types/timeline';
@@ -14,8 +15,8 @@ import VideoPlayer from './VideoPlayer';
 import SettingsPanel from './SettingsPanel';
 import EditorHeader from './EditorHeader';
 import TimelineInfoBar from './TimelineInfoBar';
-import { ZipDownloaderService } from '@/services/zipDownloader';
 import PlaybackControls from './PlaybackControls';
+import { ZipDownloaderService } from '@/services/zipDownloader';
 
 interface TimelineEditorProps {
   initialClips?: VideoClip[];
@@ -388,7 +389,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
               </div>
             </ResizablePanel>
 
-            {/* Playback Controls - Between Video Player and Timeline */}
+            {/* NEW: Playback Controls - Between Video Player and Timeline */}
             <PlaybackControls
               isPlaying={isPlaying}
               zoom={zoom}
