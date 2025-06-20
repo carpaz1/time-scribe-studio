@@ -1,4 +1,3 @@
-
 import { VideoClip } from '@/types/timeline';
 import { CompilationService } from '@/services/compilationService';
 
@@ -22,9 +21,23 @@ export class VideoCompilationService {
     try {
       onProgress?.(5, 'Analyzing source videos...');
 
-      // Generate clips from source videos
-      console.log('VideoCompilationService: Starting clip generation...');
-      const clips = await this.generateClipsFromVideos(sourceVideos, duration, onProgress);
+      // Get clip generation settings from global window object
+      const settings = (window as any).clipGenerationSettings || {
+        clipsPerVideo: 3,
+        clipDuration: 5,
+        targetDuration: duration
+      };
+
+      console.log('VideoCompilationService: Using settings:', settings);
+
+      // Generate clips from source videos with new logic
+      const clips = await this.generateClipsFromVideos(
+        sourceVideos, 
+        settings.targetDuration,
+        settings.clipsPerVideo,
+        settings.clipDuration,
+        onProgress
+      );
       
       if (clips.length === 0) {
         console.error('VideoCompilationService: No clips generated');
@@ -66,30 +79,40 @@ export class VideoCompilationService {
   static async generateClipsFromVideos(
     sourceVideos: File[],
     targetDuration: number,
+    clipsPerVideo: number = 3,
+    clipDuration: number = 5,
     onProgress?: (progress: number, stage: string) => void
   ): Promise<VideoClip[]> {
     console.log('VideoCompilationService: Generating clips from videos...');
     console.log('VideoCompilationService: Source videos:', sourceVideos.map(f => f.name));
+    console.log('VideoCompilationService: Target duration:', targetDuration);
+    console.log('VideoCompilationService: Clips per video:', clipsPerVideo);
+    console.log('VideoCompilationService: Clip duration:', clipDuration);
     
     if (sourceVideos.length === 0) {
       throw new Error('No source videos available');
     }
 
     const clips: VideoClip[] = [];
-    const clipDuration = Math.min(5, targetDuration / Math.max(sourceVideos.length, 1));
+    const clipsNeeded = Math.ceil(targetDuration / clipDuration);
     
-    console.log('VideoCompilationService: Target clip duration:', clipDuration);
+    console.log('VideoCompilationService: Clips needed for target duration:', clipsNeeded);
     onProgress?.(10, 'Creating video clips...');
 
-    for (let i = 0; i < sourceVideos.length; i++) {
-      const file = sourceVideos[i];
-      console.log(`VideoCompilationService: Processing file ${i + 1}/${sourceVideos.length}: ${file.name}`);
+    // Generate clips until we have enough to fill the target duration
+    let clipsGenerated = 0;
+    let videoIndex = 0;
+    let clipsFromCurrentVideo = 0;
+
+    while (clipsGenerated < clipsNeeded && videoIndex < sourceVideos.length) {
+      const file = sourceVideos[videoIndex];
+      console.log(`VideoCompilationService: Processing file ${videoIndex + 1}/${sourceVideos.length}: ${file.name}`);
       
       try {
         const video = document.createElement('video');
         video.preload = 'metadata';
         
-        const duration = await new Promise<number>((resolve) => {
+        const videoDuration = await new Promise<number>((resolve) => {
           video.onloadedmetadata = () => {
             console.log(`VideoCompilationService: Video ${file.name} duration: ${video.duration}`);
             resolve(video.duration || clipDuration);
@@ -103,32 +126,92 @@ export class VideoCompilationService {
 
         URL.revokeObjectURL(video.src);
 
-        const maxStartTime = Math.max(0, duration - clipDuration);
-        const startTime = Math.random() * maxStartTime;
-
-        const clip: VideoClip = {
-          id: `clip_${Date.now()}_${i}`,
-          name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${i + 1}`,
-          startTime,
-          duration: Math.min(clipDuration, duration - startTime),
-          thumbnail: '',
-          sourceFile: file,
-          position: i * clipDuration,
-          originalVideoId: `video_${i}`
-        };
-
-        clips.push(clip);
-        console.log(`VideoCompilationService: Created clip:`, clip.name, `Duration: ${clip.duration}s`);
+        // Generate random clips from this video
+        const maxStartTime = Math.max(0, videoDuration - clipDuration);
+        const actualClipDuration = Math.min(clipDuration, videoDuration);
         
-        const progress = 10 + ((i + 1) / sourceVideos.length) * 20;
-        onProgress?.(progress, `Generated clip ${i + 1}/${sourceVideos.length}`);
+        for (let i = 0; i < clipsPerVideo && clipsGenerated < clipsNeeded; i++) {
+          const startTime = Math.random() * maxStartTime;
+
+          const clip: VideoClip = {
+            id: `clip_${Date.now()}_${videoIndex}_${i}`,
+            name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${i + 1}`,
+            startTime,
+            duration: actualClipDuration,
+            thumbnail: '',
+            sourceFile: file,
+            position: clipsGenerated * clipDuration, // Sequential positioning
+            originalVideoId: `video_${videoIndex}`
+          };
+
+          clips.push(clip);
+          clipsGenerated++;
+          clipsFromCurrentVideo++;
+          
+          console.log(`VideoCompilationService: Created clip ${clipsGenerated}:`, clip.name, `Duration: ${clip.duration}s, Position: ${clip.position}s`);
+        }
+
+        const progress = 10 + ((clipsGenerated / clipsNeeded) * 20);
+        onProgress?.(progress, `Generated ${clipsGenerated}/${clipsNeeded} clips`);
 
       } catch (error) {
         console.error(`VideoCompilationService: Error generating clip from ${file.name}:`, error);
       }
+
+      // Move to next video if we've generated enough clips from current video or reached the limit
+      if (clipsFromCurrentVideo >= clipsPerVideo) {
+        videoIndex++;
+        clipsFromCurrentVideo = 0;
+      }
+    }
+
+    // If we still need more clips and have gone through all videos, start over with different random positions
+    while (clipsGenerated < clipsNeeded && sourceVideos.length > 0) {
+      const randomVideo = sourceVideos[Math.floor(Math.random() * sourceVideos.length)];
+      
+      try {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        
+        const videoDuration = await new Promise<number>((resolve) => {
+          video.onloadedmetadata = () => resolve(video.duration || clipDuration);
+          video.onerror = () => resolve(clipDuration);
+          video.src = URL.createObjectURL(randomVideo);
+        });
+
+        URL.revokeObjectURL(video.src);
+
+        const maxStartTime = Math.max(0, videoDuration - clipDuration);
+        const startTime = Math.random() * maxStartTime;
+        const actualClipDuration = Math.min(clipDuration, videoDuration);
+
+        const clip: VideoClip = {
+          id: `clip_extra_${Date.now()}_${clipsGenerated}`,
+          name: `${randomVideo.name.replace(/\.[^/.]+$/, "")} Extra Clip`,
+          startTime,
+          duration: actualClipDuration,
+          thumbnail: '',
+          sourceFile: randomVideo,
+          position: clipsGenerated * clipDuration,
+          originalVideoId: `video_extra_${clipsGenerated}`
+        };
+
+        clips.push(clip);
+        clipsGenerated++;
+        
+        console.log(`VideoCompilationService: Created extra clip ${clipsGenerated}:`, clip.name);
+        
+        const progress = 10 + ((clipsGenerated / clipsNeeded) * 20);
+        onProgress?.(progress, `Generated ${clipsGenerated}/${clipsNeeded} clips (filling duration)`);
+
+      } catch (error) {
+        console.error(`VideoCompilationService: Error generating extra clip:`, error);
+        break; // Avoid infinite loop
+      }
     }
 
     console.log(`VideoCompilationService: Generated ${clips.length} clips from ${sourceVideos.length} videos`);
+    console.log(`VideoCompilationService: Total estimated duration: ${clips.length * clipDuration}s`);
     onProgress?.(30, `Generated ${clips.length} clips successfully!`);
     return clips;
   }
