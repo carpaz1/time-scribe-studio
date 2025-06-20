@@ -52,7 +52,7 @@ export class BackgroundService {
   static async processImageForBackground(file: File, settings: Partial<BackgroundSettings> = {}): Promise<string> {
     try {
       const img = await loadImage(file);
-      let processedBlob = file;
+      let processedBlob: Blob = file;
 
       // Apply AI enhancement if requested
       if (settings.aiEnhanced) {
