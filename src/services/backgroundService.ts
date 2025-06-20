@@ -15,8 +15,8 @@ export class BackgroundService {
   private static currentBackground: string | null = null;
   private static settings: BackgroundSettings = {
     type: 'default',
-    opacity: 0.3,
-    blur: 2,
+    opacity: 0.4,
+    blur: 1,
     aiEnhanced: false,
     overlayColor: 'slate-900'
   };
@@ -79,89 +79,104 @@ export class BackgroundService {
     // Remove existing background
     this.removeBackground();
 
-    // Apply background to document body and root elements
-    document.body.classList.add('custom-background');
-    document.documentElement.classList.add('custom-background');
+    // Apply background with higher specificity
+    document.documentElement.classList.add('has-custom-background');
+    document.body.classList.add('has-custom-background');
 
     const style = document.createElement('style');
     style.id = 'custom-background-style';
 
-    const blurValue = settings.blur || 2;
-    const opacity = settings.opacity || 0.3;
+    const blurValue = settings.blur || 1;
+    const opacity = settings.opacity || 0.4;
 
     style.textContent = `
-      html.custom-background,
-      body.custom-background {
-        position: relative;
+      /* High specificity background styles */
+      html.has-custom-background,
+      html.has-custom-background body,
+      html.has-custom-background body > div,
+      html.has-custom-background #root {
         background: transparent !important;
+        position: relative;
       }
       
-      /* Main background layer */
-      html.custom-background::before {
+      /* Main background layer with highest priority */
+      html.has-custom-background::before {
         content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-image: url('${imageUrl}');
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-        opacity: ${opacity};
-        filter: blur(${blurValue}px) brightness(0.8) contrast(1.2);
-        z-index: -3;
-        pointer-events: none;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background-image: url('${imageUrl}') !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        background-attachment: fixed !important;
+        opacity: ${opacity} !important;
+        filter: blur(${blurValue}px) brightness(0.9) contrast(1.1) !important;
+        z-index: -1000 !important;
+        pointer-events: none !important;
       }
       
       /* Dark overlay for readability */
-      html.custom-background::after {
+      html.has-custom-background::after {
         content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
         background: linear-gradient(
           135deg, 
-          rgba(15, 23, 42, 0.75) 0%, 
-          rgba(30, 41, 59, 0.65) 25%,
-          rgba(51, 65, 85, 0.6) 50%,
-          rgba(30, 41, 59, 0.65) 75%,
-          rgba(15, 23, 42, 0.75) 100%
-        );
-        backdrop-filter: blur(2px);
-        z-index: -2;
-        pointer-events: none;
+          rgba(15, 23, 42, 0.7) 0%, 
+          rgba(30, 41, 59, 0.6) 25%,
+          rgba(51, 65, 85, 0.5) 50%,
+          rgba(30, 41, 59, 0.6) 75%,
+          rgba(15, 23, 42, 0.7) 100%
+        ) !important;
+        backdrop-filter: blur(1px) !important;
+        z-index: -999 !important;
+        pointer-events: none !important;
       }
 
-      /* Override any existing backgrounds */
-      .custom-background .bg-slate-900,
-      .custom-background .bg-slate-800,
-      .custom-background .bg-gradient-to-br {
-        background: transparent !important;
+      /* Override all possible conflicting backgrounds */
+      .has-custom-background .bg-slate-900,
+      .has-custom-background .bg-slate-800,
+      .has-custom-background .bg-slate-700,
+      .has-custom-background .bg-gradient-to-br,
+      .has-custom-background [class*="bg-slate"],
+      .has-custom-background [class*="bg-gradient"] {
+        background: rgba(15, 23, 42, 0.3) !important;
+        backdrop-filter: blur(2px) !important;
+      }
+
+      /* Ensure content visibility */
+      .has-custom-background > *,
+      .has-custom-background div,
+      .has-custom-background section {
+        position: relative;
+        z-index: 1;
       }
 
       /* Pattern overlay for visual appeal */
-      .custom-background .pattern-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
+      .pattern-overlay {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
         background-image: 
-          radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
-          radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.03) 0%, transparent 50%),
-          linear-gradient(45deg, transparent 40%, rgba(255, 255, 255, 0.02) 50%, transparent 60%);
-        z-index: -1;
-        pointer-events: none;
-      }
-
-      /* Ensure content is visible */
-      .custom-background > * {
-        position: relative;
-        z-index: 1;
+          radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
+          radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
+          linear-gradient(45deg, transparent 40%, rgba(255, 255, 255, 0.03) 50%, transparent 60%) !important;
+        z-index: -998 !important;
+        pointer-events: none !important;
       }
     `;
 
@@ -174,13 +189,14 @@ export class BackgroundService {
       document.body.appendChild(patternDiv);
     }
 
-    console.log('Background applied:', imageUrl);
+    console.log('Background applied with enhanced visibility:', imageUrl);
+    console.log('Settings:', settings);
   }
 
   static removeBackground() {
     this.currentBackground = null;
-    document.body.classList.remove('custom-background');
-    document.documentElement.classList.remove('custom-background');
+    document.body.classList.remove('has-custom-background');
+    document.documentElement.classList.remove('has-custom-background');
     
     const existing = document.getElementById('custom-background-style');
     if (existing) existing.remove();

@@ -20,10 +20,6 @@ export class ClipGenerator {
     // Calculate exactly how many clips we need to reach target duration
     const totalClipsNeeded = Math.ceil(targetDuration / clipDuration);
     console.log('ClipGenerator: Total clips needed for target duration:', totalClipsNeeded);
-    
-    // Calculate clips per video to reach the target
-    const actualClipsPerVideo = Math.ceil(totalClipsNeeded / sourceVideos.length);
-    console.log('ClipGenerator: Clips per video calculated:', actualClipsPerVideo);
 
     const clips: VideoClip[] = [];
     
@@ -34,7 +30,7 @@ export class ClipGenerator {
     let videoIndex = 0;
 
     while (clipsGenerated < totalClipsNeeded) {
-      const file = sourceVideos[videoIndex % sourceVideos.length]; // Cycle through videos
+      const file = sourceVideos[videoIndex % sourceVideos.length];
       console.log(`ClipGenerator: Processing file ${videoIndex % sourceVideos.length + 1}/${sourceVideos.length}: ${file.name} (clip ${clipsGenerated + 1}/${totalClipsNeeded})`);
       
       try {
@@ -52,7 +48,7 @@ export class ClipGenerator {
           duration: actualClipDuration,
           thumbnail: '',
           sourceFile: file,
-          position: clipsGenerated * clipDuration,
+          position: clipsGenerated * clipDuration, // Sequential positioning
           originalVideoId: `video_${videoIndex % sourceVideos.length}`
         };
 
@@ -66,7 +62,6 @@ export class ClipGenerator {
 
       } catch (error) {
         console.error(`ClipGenerator: Error generating clip from ${file.name}:`, error);
-        // If we can't generate from this video, skip to the next one
       }
 
       videoIndex++;

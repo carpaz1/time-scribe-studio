@@ -24,8 +24,10 @@ export class ThumbnailService {
       this.thumbnailCache.set(cacheKey, thumbnail);
       return thumbnail;
     } catch (error) {
-      console.warn('Failed to generate thumbnail:', error);
-      return this.getPlaceholderThumbnail(width, height);
+      console.warn('Failed to generate thumbnail for clip:', clip.name, error);
+      const placeholder = this.getPlaceholderThumbnail(width, height);
+      this.thumbnailCache.set(cacheKey, placeholder);
+      return placeholder;
     }
   }
 
@@ -34,6 +36,7 @@ export class ThumbnailService {
       const video = document.createElement('video');
       video.muted = true;
       video.crossOrigin = 'anonymous';
+      video.preload = 'metadata';
       
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -46,26 +49,62 @@ export class ThumbnailService {
       canvas.width = width;
       canvas.height = height;
 
-      video.addEventListener('loadedmetadata', () => {
-        video.currentTime = clip.startTime || 0;
-      });
+      let hasResolved = false;
 
-      video.addEventListener('seeked', () => {
-        try {
-          ctx.drawImage(video, 0, 0, width, height);
-          const thumbnail = canvas.toDataURL('image/jpeg', 0.8);
+      const cleanup = () => {
+        if (video.src) {
           URL.revokeObjectURL(video.src);
-          resolve(thumbnail);
-        } catch (error) {
-          reject(error);
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        if (!hasResolved) {
+          hasResolved = true;
+          cleanup();
+          reject(new Error('Thumbnail generation timeout'));
+        }
+      }, 5000);
+
+      video.addEventListener('loadedmetadata', () => {
+        if (!hasResolved) {
+          video.currentTime = clip.startTime || 0;
         }
       });
 
-      video.addEventListener('error', () => {
-        reject(new Error('Video load error'));
+      video.addEventListener('seeked', () => {
+        if (!hasResolved) {
+          try {
+            ctx.drawImage(video, 0, 0, width, height);
+            const thumbnail = canvas.toDataURL('image/jpeg', 0.8);
+            hasResolved = true;
+            clearTimeout(timeout);
+            cleanup();
+            resolve(thumbnail);
+          } catch (error) {
+            hasResolved = true;
+            clearTimeout(timeout);
+            cleanup();
+            reject(error);
+          }
+        }
       });
 
-      video.src = URL.createObjectURL(clip.sourceFile);
+      video.addEventListener('error', (e) => {
+        if (!hasResolved) {
+          hasResolved = true;
+          clearTimeout(timeout);
+          cleanup();
+          reject(new Error('Video load error'));
+        }
+      });
+
+      try {
+        video.src = URL.createObjectURL(clip.sourceFile);
+      } catch (error) {
+        hasResolved = true;
+        clearTimeout(timeout);
+        reject(error);
+      }
     });
   }
 
@@ -86,9 +125,10 @@ export class ThumbnailService {
     
     // Add play icon
     ctx.fillStyle = 'white';
-    ctx.font = `${Math.min(width, height) / 3}px Arial`;
+    ctx.font = `${Math.min(width, height) / 4}px Arial`;
     ctx.textAlign = 'center';
-    ctx.fillText('▶', width / 2, height / 2 + 10);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('▶', width / 2, height / 2);
     
     return canvas.toDataURL('image/jpeg', 0.8);
   }
