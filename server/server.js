@@ -272,11 +272,12 @@ app.post('/git-pull', async (req, res) => {
           });
         } else {
           // Check for specific error types
-          if (errorOutput.includes('overwritten by merge') || errorOutput.includes('would be overwritten')) {
+          if (errorOutput.includes('overwritten by merge') || errorOutput.includes('would be overwritten') || output.includes('overwritten by merge')) {
             res.status(409).json({ 
               success: false, 
-              error: 'Your local changes would be overwritten by merge. Please commit your changes or stash them before you merge.',
-              type: 'merge_conflict'
+              error: 'Your local changes would be overwritten by merge. This usually happens with package-lock.json. Use "Stash & Pull" to resolve this conflict.',
+              type: 'merge_conflict',
+              conflictFiles: ['package-lock.json']
             });
           } else if (errorOutput.includes('not a git repository')) {
             res.status(400).json({ 
