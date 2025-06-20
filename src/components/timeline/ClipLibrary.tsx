@@ -213,17 +213,23 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
       const targetDurationSeconds = targetDurationMinutes * 60;
       const randomClips: VideoClip[] = [];
       
-      // Calculate how many clips we need and what duration each should be
-      const maxClips = Math.min(199, sourceVideos.length * 10); // Max 10 clips per video
-      const clipDuration = Math.max(0.5, targetDurationSeconds / maxClips); // Minimum 0.5 seconds per clip
-      const actualClipCount = Math.floor(targetDurationSeconds / clipDuration);
+      // Calculate optimal clip duration to fit exactly in target time
+      const availableVideos = sourceVideos.filter(video => video.duration >= 1); // Only use videos longer than 1 second
+      if (availableVideos.length === 0) {
+        throw new Error("No videos long enough to create clips from");
+      }
       
-      // Generate clips with calculated duration
-      for (let i = 0; i < actualClipCount && i < sourceVideos.length * 10; i++) {
+      // Use a reasonable clip duration (2-5 seconds) and calculate how many clips we need
+      const clipDuration = Math.max(2, Math.min(5, targetDurationSeconds / 10)); // 2-5 seconds per clip
+      const maxClips = Math.floor(targetDurationSeconds / clipDuration);
+      const actualClipCount = Math.min(maxClips, availableVideos.length * 3); // Max 3 clips per video
+      
+      // Generate exactly the number of clips needed
+      for (let i = 0; i < actualClipCount; i++) {
         if (processingCancelled) return;
         
-        const videoIndex = i % sourceVideos.length;
-        const video = sourceVideos[videoIndex];
+        const videoIndex = i % availableVideos.length;
+        const video = availableVideos[videoIndex];
         const startTime = Math.random() * Math.max(0, video.duration - clipDuration);
         
         const randomClip: VideoClip = {
@@ -241,10 +247,11 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
       if (processingCancelled) return;
 
+      const actualDuration = randomClips.reduce((sum, clip) => sum + clip.duration, 0);
       onClipsUpdate(randomClips);
       
       const config = {
-        totalDuration: randomClips.reduce((sum, clip) => sum + clip.duration, 0),
+        totalDuration: actualDuration,
         clipOrder: randomClips.map(clip => clip.id),
         zoom: 1,
         playheadPosition: 0,
@@ -252,7 +259,7 @@ const ClipLibrary: React.FC<ClipLibraryProps> = ({
 
       toast({
         title: `${targetDurationMinutes}-minute compilation started!`,
-        description: `Generated ${randomClips.length} clips totaling ~${targetDurationMinutes} minutes, starting compilation...`,
+        description: `Generated ${randomClips.length} clips (~${Math.round(actualDuration)}s total), starting compilation...`,
       });
 
       if (!processingCancelled) {

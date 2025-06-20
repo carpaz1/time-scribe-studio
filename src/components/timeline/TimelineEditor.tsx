@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import { VideoClip, SourceVideo, CompileRequest } from '@/types/timeline';
 import { useTimelineState } from '@/hooks/useTimelineState';
@@ -12,6 +11,8 @@ import VideoPlayerSection from './VideoPlayerSection';
 import SidebarSection from './SidebarSection';
 import EditorHeader from './EditorHeader';
 import SettingsPanel from './SettingsPanel';
+import { useProgressTracker } from '@/hooks/useProgressTracker';
+import StatusBar from './StatusBar';
 
 interface TimelineEditorProps {
   initialClips?: VideoClip[];
@@ -27,6 +28,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const [compilationProgress, setCompilationProgress] = useState(0);
   const [compilationStage, setCompilationStage] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const progressTracker = useProgressTracker();
 
   // State management
   const timelineState = useTimelineState(initialClips);
@@ -87,9 +89,13 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
       return;
     }
 
+    progressTracker.startProgress(videoFiles.length, "Processing videos");
     const newSourceVideos: SourceVideo[] = [];
     
-    for (const file of videoFiles) {
+    for (let i = 0; i < videoFiles.length; i++) {
+      const file = videoFiles[i];
+      progressTracker.updateProgress(i + 1, `Processing ${file.name}`);
+      
       const videoElement = document.createElement('video');
       videoElement.preload = 'metadata';
       
@@ -148,6 +154,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         });
       }
     }
+    
+    progressTracker.completeProgress();
     
     if (newSourceVideos.length > 0) {
       setSourceVideos(prev => [...prev, ...newSourceVideos]);
@@ -267,6 +275,13 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({
         onDownloadClips={handleDownloadClips}
         onOpenSettings={() => setIsSettingsOpen(true)}
         lastCompilationResult={lastCompilationResult}
+      />
+
+      <StatusBar
+        isActive={progressTracker.progress.isActive}
+        current={progressTracker.progress.current}
+        total={progressTracker.progress.total}
+        message={progressTracker.progress.message}
       />
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">

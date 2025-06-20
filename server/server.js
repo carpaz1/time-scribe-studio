@@ -184,33 +184,48 @@ app.post('/upload', (req, res, next) => {
   });
 });
 
-app.post('/git-pull', (req, res) => {
-  console.log('Git pull request received');
-  
-  const { exec } = require('child_process');
-  
-  exec('git pull', { cwd: process.cwd() }, (error, stdout, stderr) => {
-    if (error) {
-      console.error('Git pull error:', error);
-      return res.status(500).json({ 
-        success: false, 
-        message: `Git pull failed: ${error.message}` 
-      });
-    }
+app.post('/git-pull', async (req, res) => {
+  try {
+    console.log('Git pull request received');
     
-    if (stderr && !stderr.includes('Already up to date')) {
-      console.warn('Git pull stderr:', stderr);
-    }
-    
-    console.log('Git pull stdout:', stdout);
-    
-    res.json({ 
-      success: true, 
-      message: stdout.trim() || 'Git pull completed successfully',
-      output: stdout,
-      errors: stderr
+    const { spawn } = require('child_process');
+    const process = spawn('git', ['pull'], { 
+      cwd: __dirname + '/..',
+      stdio: 'pipe'
     });
-  });
+    
+    let output = '';
+    let errorOutput = '';
+    
+    process.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    process.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+    
+    process.on('close', (code) => {
+      if (code === 0) {
+        res.json({ 
+          success: true, 
+          message: output || 'Git pull completed successfully' 
+        });
+      } else {
+        res.status(500).json({ 
+          success: false, 
+          message: `Git pull failed with code ${code}: ${errorOutput || output}` 
+        });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Git pull error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
 });
 
 async function processVideoCompilation(jobId, files, clipsData) {

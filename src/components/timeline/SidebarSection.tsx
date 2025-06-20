@@ -14,6 +14,7 @@ interface SidebarSectionProps {
   onRandomizeAll: () => void;
   onVideoUpload: (files: File[]) => void;
   onBulkUpload: (files: File[]) => void;
+  progressTracker?: any;
 }
 
 const SidebarSection: React.FC<SidebarSectionProps> = (props) => {
