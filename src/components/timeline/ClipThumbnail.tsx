@@ -28,7 +28,6 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
   const [thumbnailError, setThumbnailError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -38,7 +37,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
     top: '10px',
   };
 
-  // Generate thumbnail from video with better error handling
+  // Simplified thumbnail generation
   useEffect(() => {
     let mounted = true;
     setIsLoading(true);
@@ -47,24 +46,20 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
     const generateThumbnail = async () => {
       try {
         const video = document.createElement('video');
-        videoRef.current = video;
-        
         video.muted = true;
         video.playsInline = true;
-        video.crossOrigin = 'anonymous';
+        video.preload = 'metadata';
         
-        // Create object URL
         const objectUrl = URL.createObjectURL(clip.sourceFile);
         video.src = objectUrl;
 
         const cleanup = () => {
           URL.revokeObjectURL(objectUrl);
           video.remove();
-          videoRef.current = null;
         };
 
-        video.addEventListener('error', () => {
-          console.warn('Thumbnail generation failed for:', clip.name);
+        video.addEventListener('error', (e) => {
+          console.warn('Video load error for thumbnail:', clip.name, e);
           if (mounted) {
             setThumbnailError(true);
             setIsLoading(false);
@@ -78,60 +73,67 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
             return;
           }
 
-          const canvas = canvasRef.current;
-          if (!canvas) {
-            cleanup();
-            return;
-          }
-          
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            cleanup();
-            return;
-          }
-          
-          // Set canvas dimensions
-          canvas.width = 120;
-          canvas.height = 68;
-          
-          // Seek to middle of clip for thumbnail
-          const seekTime = Math.min(clip.startTime + (clip.duration / 2), video.duration - 0.1);
-          video.currentTime = Math.max(0, seekTime);
-          
-          video.addEventListener('seeked', () => {
-            if (!mounted) {
+          try {
+            const canvas = canvasRef.current;
+            if (!canvas) {
               cleanup();
               return;
             }
-
-            try {
-              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-              setThumbnailUrl(dataUrl);
-              setIsLoading(false);
-            } catch (err) {
-              console.warn('Canvas drawing failed for:', clip.name, err);
-              setThumbnailError(true);
-              setIsLoading(false);
-            }
-            cleanup();
-          }, { once: true });
-
-          // Fallback timeout
-          setTimeout(() => {
-            if (mounted && isLoading) {
-              console.warn('Thumbnail generation timeout for:', clip.name);
-              setThumbnailError(true);
-              setIsLoading(false);
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
               cleanup();
+              return;
             }
-          }, 3000);
+            
+            canvas.width = 120;
+            canvas.height = 68;
+            
+            // Seek to a safe position for thumbnail
+            const seekTime = Math.min(clip.startTime + 0.5, video.duration - 0.1);
+            video.currentTime = Math.max(0, seekTime);
+            
+            const onSeeked = () => {
+              if (!mounted) {
+                cleanup();
+                return;
+              }
+
+              try {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                setThumbnailUrl(dataUrl);
+                setIsLoading(false);
+              } catch (drawError) {
+                console.warn('Canvas draw error:', clip.name, drawError);
+                setThumbnailError(true);
+                setIsLoading(false);
+              }
+              cleanup();
+            };
+
+            video.addEventListener('seeked', onSeeked, { once: true });
+          } catch (error) {
+            console.warn('Thumbnail process error:', clip.name, error);
+            setThumbnailError(true);
+            setIsLoading(false);
+            cleanup();
+          }
         });
 
-        // Start loading
+        // Timeout fallback
+        setTimeout(() => {
+          if (mounted && isLoading) {
+            console.warn('Thumbnail timeout:', clip.name);
+            setThumbnailError(true);
+            setIsLoading(false);
+            cleanup();
+          }
+        }, 5000);
+
         video.load();
       } catch (err) {
-        console.warn('Thumbnail setup failed for:', clip.name, err);
+        console.warn('Thumbnail setup error:', clip.name, err);
         if (mounted) {
           setThumbnailError(true);
           setIsLoading(false);
@@ -143,11 +145,8 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
 
     return () => {
       mounted = false;
-      if (videoRef.current) {
-        videoRef.current.remove();
-      }
     };
-  }, [clip.sourceFile, clip.name, clip.startTime, clip.duration]);
+  }, [clip.sourceFile, clip.name, clip.startTime]);
 
   return (
     <div
@@ -186,7 +185,7 @@ const ClipThumbnail: React.FC<ClipThumbnailProps> = ({
 
         {/* Overlay with clip info */}
         <div className="absolute inset-0 bg-black bg-opacity-40 flex flex-col justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="text-xs text-white font-medium truncate mb-1 px-2">
+          <div className="text-xs text-white font-medium truncate mb-1 px-2 max-w-full">
             {clip.name}
           </div>
           <div className="text-xs text-blue-100">

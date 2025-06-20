@@ -5,7 +5,6 @@ import TimelineTrack from './TimelineTrack';
 import Playhead from './Playhead';
 import TimelineRuler from './TimelineRuler';
 import TimelineInfoBar from './TimelineInfoBar';
-import PlaybackControls from './PlaybackControls';
 
 interface TimelineMainProps {
   clips: VideoClip[];
@@ -38,12 +37,8 @@ const TimelineMain: React.FC<TimelineMainProps> = ({
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const newPosition = (x / rect.width) * (totalDuration / zoom);
+    const newPosition = (x / rect.width) * totalDuration / (zoom / 100);
     onPlayheadMove(Math.max(0, Math.min(totalDuration, newPosition)));
-  };
-
-  const handleTimelineScroll = (e: React.WheelEvent) => {
-    // Handle scroll logic here if needed
   };
 
   return (
@@ -56,7 +51,7 @@ const TimelineMain: React.FC<TimelineMainProps> = ({
       />
 
       <div className="flex-1 overflow-hidden bg-gradient-to-r from-indigo-900/40 via-slate-800/60 to-purple-900/40 backdrop-blur-sm border border-indigo-600/20 rounded-t-2xl shadow-2xl">
-        <div className="h-full flex flex-col" onWheel={handleTimelineScroll}>
+        <div className="h-full flex flex-col">
           <TimelineRuler
             totalDuration={totalDuration}
             zoom={zoom}
@@ -65,8 +60,13 @@ const TimelineMain: React.FC<TimelineMainProps> = ({
           
           <div
             ref={timelineRef}
-            className="flex-1 relative bg-gradient-to-r from-slate-800/80 via-indigo-800/40 to-slate-800/80 backdrop-blur-sm border-t border-indigo-600/30 cursor-pointer shadow-inner"
+            className="flex-1 relative bg-gradient-to-r from-slate-800/80 via-indigo-800/40 to-slate-800/80 backdrop-blur-sm border-t border-indigo-600/30 cursor-pointer shadow-inner overflow-x-auto"
             onClick={handleTimelineClick}
+            data-timeline-track
+            style={{ 
+              minWidth: `${Math.max(100, zoom)}%`,
+              width: `${Math.max(100, zoom)}%`
+            }}
           >
             <TimelineTrack
               clips={clips}

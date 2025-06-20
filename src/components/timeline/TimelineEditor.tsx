@@ -87,11 +87,11 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   }, []);
 
   const handleZoomIn = () => {
-    setZoom(zoom => Math.min(zoom + 10, 200));
+    setZoom(zoom => Math.min(zoom + 25, 500));
   };
 
   const handleZoomOut = () => {
-    setZoom(zoom => Math.max(zoom - 10, 10));
+    setZoom(zoom => Math.max(zoom - 25, 25));
   };
 
   const handleReset = () => {
@@ -202,6 +202,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
 
     try {
       let currentClipCount = 0;
+      const newClips: VideoClip[] = [];
+      
       for (const video of videosToProcess) {
         for (let i = 0; i < configToUse.numClips; i++) {
           const videoElement = document.createElement('video');
@@ -224,7 +226,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
               };
               
               nextClipId.current++;
-              setClips(prevClips => [...prevClips, clip]);
+              newClips.push(clip);
               currentClipCount++;
               const progressValue = (currentClipCount / totalClips) * 100;
               setGenerationProgress(progressValue);
@@ -239,6 +241,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         }
       }
 
+      setClips(prevClips => [...prevClips, ...newClips]);
       completeProgress();
       toast({
         title: "Clips generated",
@@ -257,13 +260,46 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   };
 
   const handleRandomizeAll = () => {
-    setTimelineClips(prevClips => {
-      const newClips = [...prevClips];
-      for (let i = newClips.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [newClips[i], newClips[j]] = [newClips[j], newClips[i]];
-      }
-      return newClips.map((clip, index) => ({ ...clip, position: index * clip.duration }));
+    if (clips.length === 0) {
+      toast({
+        title: "No clips available",
+        description: "Generate clips first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Get clips that aren't already on the timeline
+    const existingClipIds = new Set(timelineClips.map(clip => clip.id));
+    const availableClips = clips.filter(clip => !existingClipIds.has(clip.id));
+    
+    if (availableClips.length === 0) {
+      toast({
+        title: "All clips are already on timeline",
+        description: "Generate more clips or clear the timeline",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log('Adding', availableClips.length, 'clips to timeline');
+    const shuffledClips = [...availableClips].sort(() => Math.random() - 0.5);
+    
+    // Calculate starting position (end of current timeline)
+    const currentEndPosition = timelineClips.length > 0 
+      ? Math.max(...timelineClips.map(c => c.position + c.duration))
+      : 0;
+
+    const newTimelineClips = shuffledClips.slice(0, 20).map((clip, index) => ({
+      ...clip,
+      position: currentEndPosition + (index > 0 ? shuffledClips.slice(0, index).reduce((acc, c) => acc + c.duration, 0) : 0)
+    }));
+
+    setTimelineClips(prev => [...prev, ...newTimelineClips]);
+    
+    toast({
+      title: "Timeline randomized",
+      description: `Added ${newTimelineClips.length} clips to timeline`,
     });
   };
 
@@ -316,29 +352,29 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       setCompilationStage('Initializing compilation...');
       setLastCompilationResult(undefined);
 
-      console.log('TimelineEditor: Starting compilation of', timelineClips.length, 'clips');
+      console.log('Starting compilation of', timelineClips.length, 'clips');
 
       const result = await VideoCompilerService.compileTimeline(
         timelineClips,
         { totalDuration, clipOrder: timelineClips.map(c => c.id), zoom, playheadPosition },
         onExport,
         (progress, stage) => {
-          console.log('TimelineEditor: Compilation progress:', progress, stage);
+          console.log('Compilation progress:', progress, stage);
           setCompilationProgress(progress);
           setCompilationStage(stage);
         }
       );
 
-      console.log('TimelineEditor: Compilation completed successfully:', result);
+      console.log('Compilation completed successfully:', result);
       setLastCompilationResult(result);
       setShowVideoPreview(true);
       
       toast({
         title: "Compilation Complete!",
-        description: `Video saved successfully. Click Preview to view or Download to save locally.`,
+        description: `Video compiled successfully. File ready for download.`,
       });
     } catch (error) {
-      console.error('TimelineEditor: Compilation failed:', error);
+      console.error('Compilation failed:', error);
       toast({
         title: "Compilation Failed",
         description: error instanceof Error ? error.message : "Unknown error occurred",
