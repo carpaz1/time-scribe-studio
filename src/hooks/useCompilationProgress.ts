@@ -38,12 +38,17 @@ export const useCompilationProgress = () => {
       clearInterval(intervalRef.current);
     }
 
-    // Poll for progress updates with error handling
+    // Poll for progress updates with enhanced error handling
     intervalRef.current = setInterval(async () => {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
         const response = await fetch(`http://localhost:4000/progress/${jobId}`, {
-          timeout: 5000 // 5 second timeout
-        } as RequestInit);
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
         
         if (!response.ok) {
           throw new Error(`Progress fetch failed: ${response.status}`);
@@ -96,14 +101,22 @@ export const useCompilationProgress = () => {
       } catch (error) {
         console.error('Error fetching compilation progress:', error);
         
-        // Don't immediately stop on network errors, but show warning
-        setProgress(prev => ({
-          ...prev,
-          stage: 'Connection issues... retrying',
-          error: error.message,
-        }));
+        // Handle network errors gracefully - don't stop immediately
+        if (error.name === 'AbortError') {
+          setProgress(prev => ({
+            ...prev,
+            stage: 'Connection timeout... retrying',
+            error: 'Network timeout',
+          }));
+        } else {
+          setProgress(prev => ({
+            ...prev,
+            stage: 'Connection issues... retrying',
+            error: error.message,
+          }));
+        }
       }
-    }, 1000);
+    }, 2000); // Increased interval to 2 seconds to reduce load
 
     // Failsafe timeout after 10 minutes
     setTimeout(() => {
@@ -143,9 +156,20 @@ export const useCompilationProgress = () => {
     });
   }, []);
 
+  const resetProgress = useCallback(() => {
+    setProgress({
+      isActive: false,
+      percent: 0,
+      stage: '',
+      jobId: undefined,
+      error: undefined,
+    });
+  }, []);
+
   return {
     progress,
     startCompilation,
     stopCompilation,
+    resetProgress,
   };
 };
