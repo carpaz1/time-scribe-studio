@@ -19,6 +19,7 @@ import EditorHeader from './EditorHeader';
 import VideoPreview from './VideoPreview';
 import AIAssistant from './AIAssistant';
 import ClipsLibrary from './ClipsLibrary';
+import BackgroundSettings from './BackgroundSettings';
 
 interface TimelineEditorProps {
   onExport?: (data: CompileRequest) => void;
@@ -62,6 +63,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
 
   // Enhanced quick randomize with smart features
   const handleQuickRandomize = useCallback(async (duration: number, includePictures: boolean = false) => {
+    console.log('TimelineEditor: Starting quick randomize with duration:', duration);
     updateProcessing({
       isGenerating: true,
       generationProgress: 0,
@@ -75,6 +77,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         includePictures,
         onExport,
         (progress, stage) => {
+          console.log(`TimelineEditor: Progress callback received - ${progress}%, ${stage}`);
           if (stage.includes('Generated')) {
             updateProcessing({ generationProgress: progress, processingStage: stage });
           } else {
@@ -87,14 +90,16 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         }
       );
 
+      console.log('TimelineEditor: Quick randomize result:', result);
       if (result) {
         updateState({ clips: result.clips, timelineClips: result.clips });
         setLastCompilationResult(result.compilationResult);
         updateState({ showVideoPreview: true });
+        console.log('TimelineEditor: Updated state with compilation result');
       }
 
     } catch (error) {
-      console.error('Smart generation error:', error);
+      console.error('TimelineEditor: Smart generation error:', error);
     } finally {
       updateProcessing({
         isGenerating: false,
@@ -108,6 +113,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
   }, [state.sourceVideos, updateState, updateProcessing, onExport, setLastCompilationResult]);
 
   const handleGenerateClips = useCallback(async (duration: number) => {
+    console.log('TimelineEditor: Generating clips for duration:', duration);
     updateProcessing({
       isGenerating: true,
       generationProgress: 0,
@@ -118,15 +124,19 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
       const clips = await VideoCompilationService.generateClipsFromVideos(
         state.sourceVideos,
         duration,
+        3, // default clips per video
+        5, // default clip duration
         (progress, stage) => {
+          console.log(`TimelineEditor: Clip generation progress - ${progress}%, ${stage}`);
           updateProcessing({ generationProgress: progress, processingStage: stage });
         }
       );
 
+      console.log('TimelineEditor: Generated clips:', clips);
       updateState({ clips, timelineClips: clips });
 
     } catch (error) {
-      console.error('Clip generation error:', error);
+      console.error('TimelineEditor: Clip generation error:', error);
     } finally {
       updateProcessing({
         isGenerating: false,
@@ -138,6 +148,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
 
   // Enhanced compilation
   const handleCompile = useCallback(async () => {
+    console.log('TimelineEditor: Starting compilation with clips:', state.timelineClips.length);
     updateProcessing({
       isCompiling: true,
       compilationProgress: 0,
@@ -154,6 +165,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         },
         onExport,
         (progress, stage) => {
+          console.log(`TimelineEditor: Compilation progress - ${progress}%, ${stage}`);
           updateProcessing({
             compilationProgress: progress,
             compilationStage: stage
@@ -161,12 +173,13 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
         }
       );
 
+      console.log('TimelineEditor: Compilation result:', result);
       if (result) {
         setLastCompilationResult(result);
         updateState({ showVideoPreview: true });
       }
     } catch (error) {
-      // Error handling is done in VideoCompilationService
+      console.error('TimelineEditor: Compilation error:', error);
     } finally {
       updateProcessing({
         isCompiling: false,
@@ -208,7 +221,7 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800">
+      <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 custom-background">
         <EditorHeader
           isPlaying={state.isPlaying}
           isCompiling={processing.isCompiling}
@@ -245,6 +258,8 @@ const TimelineEditor: React.FC<TimelineEditorProps> = ({ onExport }) => {
                 processingStage={currentStage}
                 onCancelProcessing={handleCancelProcessing}
               />
+
+              <BackgroundSettings />
 
               <AIAssistant
                 clips={state.clips}

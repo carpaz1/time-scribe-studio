@@ -12,6 +12,7 @@ export class VideoCompilationService {
     console.log('VideoCompilationService: Starting quick randomize and compile');
     console.log('VideoCompilationService: Source videos count:', sourceVideos.length);
     console.log('VideoCompilationService: Target duration:', duration);
+    console.log('VideoCompilationService: Source video details:', sourceVideos.map(f => ({ name: f.name, size: f.size, type: f.type })));
     
     if (sourceVideos.length === 0) {
       console.error('VideoCompilationService: No source videos available');
@@ -45,6 +46,15 @@ export class VideoCompilationService {
       }
 
       console.log(`VideoCompilationService: Generated ${clips.length} clips successfully`);
+      console.log('VideoCompilationService: Clip details:', clips.map(c => ({ 
+        id: c.id, 
+        name: c.name, 
+        duration: c.duration, 
+        position: c.position,
+        startTime: c.startTime,
+        sourceFileSize: c.sourceFile?.size 
+      })));
+      
       onProgress?.(30, `Generated ${clips.length} clips, starting compilation...`);
 
       // Compile the generated clips
@@ -67,6 +77,8 @@ export class VideoCompilationService {
       );
 
       console.log('VideoCompilationService: Compilation result:', compilationResult);
+      console.log('VideoCompilationService: Download URL length:', compilationResult.downloadUrl?.length || 0);
+      console.log('VideoCompilationService: Output file:', compilationResult.outputFile);
       console.log('VideoCompilationService: Quick randomize completed successfully');
       return { clips, compilationResult };
 
@@ -225,12 +237,21 @@ export class VideoCompilationService {
     console.log('VideoCompilationService: Starting timeline compilation');
     console.log('VideoCompilationService: Timeline clips count:', timelineClips.length);
     console.log('VideoCompilationService: Config:', config);
+    console.log('VideoCompilationService: Clips for compilation:', timelineClips.map(c => ({
+      id: c.id,
+      name: c.name,
+      duration: c.duration,
+      position: c.position,
+      sourceFileSize: c.sourceFile?.size,
+      sourceFileName: c.sourceFile?.name
+    })));
     
     if (timelineClips.length === 0) {
       throw new Error('No clips to compile');
     }
 
     try {
+      console.log('VideoCompilationService: Calling CompilationService.compileWithAI...');
       const result = await CompilationService.compileWithAI(
         timelineClips,
         config,
@@ -238,8 +259,11 @@ export class VideoCompilationService {
       );
 
       console.log('VideoCompilationService: Compilation service result:', result);
+      console.log('VideoCompilationService: Result type:', typeof result);
+      console.log('VideoCompilationService: Result keys:', Object.keys(result || {}));
 
       if (onExport) {
+        console.log('VideoCompilationService: Calling onExport callback');
         onExport({ config, clips: timelineClips });
       }
 
@@ -247,6 +271,11 @@ export class VideoCompilationService {
       return result;
     } catch (error) {
       console.error('VideoCompilationService: Timeline compilation failed:', error);
+      console.error('VideoCompilationService: Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       throw error;
     }
   }
