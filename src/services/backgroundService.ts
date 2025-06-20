@@ -1,5 +1,4 @@
-
-import { removeBackground, loadImage } from '@/services/imageProcessor';
+import { removeBackground, loadImage, enhanceImageForTheme } from '@/services/imageProcessor';
 
 export interface BackgroundSettings {
   type: 'default' | 'single' | 'folder';
@@ -15,8 +14,8 @@ export class BackgroundService {
   private static currentBackground: string | null = null;
   private static settings: BackgroundSettings = {
     type: 'default',
-    opacity: 0.4,
-    blur: 1,
+    opacity: 0.7, // Increased from 0.4 for better visibility
+    blur: 0.5, // Reduced from 1 for less blur
     aiEnhanced: false,
     overlayColor: 'slate-900'
   };
@@ -51,6 +50,16 @@ export class BackgroundService {
 
   static async processImageForBackground(file: File, settings: Partial<BackgroundSettings> = {}): Promise<string> {
     try {
+      console.log('BackgroundService: Processing image for background, AI Enhanced:', settings.aiEnhanced);
+      
+      // Apply AI enhancement if enabled
+      if (settings.aiEnhanced) {
+        console.log('BackgroundService: Applying AI enhancement to image');
+        const enhancedBlob = await enhanceImageForTheme(file);
+        const enhancedFile = new File([enhancedBlob], file.name, { type: enhancedBlob.type });
+        file = enhancedFile;
+      }
+
       const img = await loadImage(file);
       
       // Create canvas for processing
@@ -86,8 +95,8 @@ export class BackgroundService {
     const style = document.createElement('style');
     style.id = 'custom-background-style';
 
-    const blurValue = settings.blur || 1;
-    const opacity = settings.opacity || 0.4;
+    const blurValue = settings.blur || 0.5;
+    const opacity = settings.opacity || 0.7; // Higher default opacity
 
     style.textContent = `
       /* High specificity background styles */
@@ -115,12 +124,12 @@ export class BackgroundService {
         background-repeat: no-repeat !important;
         background-attachment: fixed !important;
         opacity: ${opacity} !important;
-        filter: blur(${blurValue}px) brightness(0.9) contrast(1.1) !important;
+        filter: blur(${blurValue}px) brightness(1.1) contrast(1.2) !important;
         z-index: -1000 !important;
         pointer-events: none !important;
       }
       
-      /* Dark overlay for readability */
+      /* Much lighter overlay for better image visibility */
       html.has-custom-background::after {
         content: '';
         position: fixed !important;
@@ -132,26 +141,26 @@ export class BackgroundService {
         height: 100vh !important;
         background: linear-gradient(
           135deg, 
-          rgba(15, 23, 42, 0.7) 0%, 
-          rgba(30, 41, 59, 0.6) 25%,
-          rgba(51, 65, 85, 0.5) 50%,
-          rgba(30, 41, 59, 0.6) 75%,
-          rgba(15, 23, 42, 0.7) 100%
+          rgba(15, 23, 42, 0.3) 0%, 
+          rgba(30, 41, 59, 0.2) 25%,
+          rgba(51, 65, 85, 0.1) 50%,
+          rgba(30, 41, 59, 0.2) 75%,
+          rgba(15, 23, 42, 0.3) 100%
         ) !important;
-        backdrop-filter: blur(1px) !important;
+        backdrop-filter: blur(0.5px) !important;
         z-index: -999 !important;
         pointer-events: none !important;
       }
 
-      /* Override all possible conflicting backgrounds */
+      /* Override all possible conflicting backgrounds with transparency */
       .has-custom-background .bg-slate-900,
       .has-custom-background .bg-slate-800,
       .has-custom-background .bg-slate-700,
       .has-custom-background .bg-gradient-to-br,
       .has-custom-background [class*="bg-slate"],
       .has-custom-background [class*="bg-gradient"] {
-        background: rgba(15, 23, 42, 0.3) !important;
-        backdrop-filter: blur(2px) !important;
+        background: rgba(15, 23, 42, 0.1) !important;
+        backdrop-filter: blur(1px) !important;
       }
 
       /* Ensure content visibility */
@@ -162,7 +171,7 @@ export class BackgroundService {
         z-index: 1;
       }
 
-      /* Pattern overlay for visual appeal */
+      /* Enhanced pattern overlay for visual appeal */
       .pattern-overlay {
         position: fixed !important;
         top: 0 !important;
@@ -172,9 +181,9 @@ export class BackgroundService {
         width: 100vw !important;
         height: 100vh !important;
         background-image: 
-          radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
-          radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
-          linear-gradient(45deg, transparent 40%, rgba(255, 255, 255, 0.03) 50%, transparent 60%) !important;
+          radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.02) 0%, transparent 50%),
+          radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.02) 0%, transparent 50%),
+          linear-gradient(45deg, transparent 40%, rgba(255, 255, 255, 0.01) 50%, transparent 60%) !important;
         z-index: -998 !important;
         pointer-events: none !important;
       }

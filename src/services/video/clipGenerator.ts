@@ -1,4 +1,3 @@
-
 import { VideoClip } from '@/types/timeline';
 
 export class ClipGenerator {
@@ -6,7 +5,7 @@ export class ClipGenerator {
     sourceVideos: File[],
     targetDuration: number,
     clipsPerVideo: number = 3,
-    clipDuration: number = 5,
+    clipDuration: number = 1, // Changed to 1 second for accurate calculation
     onProgress?: (progress: number, stage: string) => void
   ): Promise<VideoClip[]> {
     console.log('ClipGenerator: Generating clips from videos...');
@@ -64,6 +63,19 @@ export class ClipGenerator {
 
       } catch (error) {
         console.error(`ClipGenerator: Error generating clip from ${file.name}:`, error);
+        // Create a fallback clip to maintain count accuracy
+        const fallbackClip: VideoClip = {
+          id: `fallback_clip_${Date.now()}_${clipsGenerated}_${Math.random().toString(36).substr(2, 9)}`,
+          name: `${file.name.replace(/\.[^/.]+$/, "")} Clip ${clipsGenerated + 1}`,
+          startTime: 0,
+          duration: clipDuration,
+          thumbnail: '',
+          sourceFile: file,
+          position: clipsGenerated * clipDuration,
+          originalVideoId: `video_${videoIndex % sourceVideos.length}`
+        };
+        clips.push(fallbackClip);
+        clipsGenerated++;
       }
 
       videoIndex++;

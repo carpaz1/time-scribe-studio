@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Image, Folder, Sparkles, Trash2, RefreshCw } from 'lucide-react';
+import { Image, Folder, Sparkles, Trash2, RefreshCw, Info } from 'lucide-react';
 import { BackgroundService, BackgroundSettings as BgSettings } from '@/services/backgroundService';
 import { useToast } from '@/hooks/use-toast';
 
@@ -49,7 +49,7 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
         setCurrentImageName(file.name);
         toast({
           title: "Background applied",
-          description: `Using ${file.name} as background`,
+          description: `Using ${file.name} as background${settings.aiEnhanced ? ' (AI Enhanced)' : ''}`,
         });
       }
     } catch (error) {
@@ -76,7 +76,7 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
           setCurrentImageName(randomFile.name);
           toast({
             title: "Random background applied",
-            description: `Using ${randomFile.name} from selected folder`,
+            description: `Using ${randomFile.name} from selected folder${settings.aiEnhanced ? ' (AI Enhanced)' : ''}`,
           });
         }
       }
@@ -155,8 +155,8 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
             <Slider
               value={[settings.opacity]}
               onValueChange={(value) => updateSettings({ opacity: value[0] })}
-              max={0.6}
-              min={0.1}
+              max={0.9}
+              min={0.2}
               step={0.05}
               className="w-full"
             />
@@ -170,22 +170,30 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
             <Slider
               value={[settings.blur]}
               onValueChange={(value) => updateSettings({ blur: value[0] })}
-              max={8}
+              max={5}
               min={0}
-              step={1}
+              step={0.5}
               className="w-full"
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              <span className="text-sm text-slate-300">AI Enhanced</span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-400" />
+                <span className="text-sm text-slate-300">AI Enhanced</span>
+              </div>
+              <Switch
+                checked={settings.aiEnhanced}
+                onCheckedChange={(checked) => updateSettings({ aiEnhanced: checked })}
+              />
             </div>
-            <Switch
-              checked={settings.aiEnhanced}
-              onCheckedChange={(checked) => updateSettings({ aiEnhanced: checked })}
-            />
+            <div className="flex items-start gap-2 p-2 bg-purple-900/20 rounded border border-purple-500/30">
+              <Info className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-purple-200">
+                <strong>AI Enhanced:</strong> Automatically adjusts contrast, brightness, and color tones to better match the slate theme and improve visual harmony with the interface.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -193,7 +201,15 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
         {settings.type !== 'default' && (
           <div className="flex gap-2 pt-4 border-t border-slate-600">
             <Button
-              onClick={removeBackground}
+              onClick={() => {
+                BackgroundService.removeBackground();
+                updateSettings({ type: 'default' });
+                setCurrentImageName('');
+                toast({
+                  title: "Background removed",
+                  description: "Reverted to default theme",
+                });
+              }}
               variant="outline"
               size="sm"
               className="flex-1 border-slate-600 text-slate-300"
@@ -226,6 +242,7 @@ const BackgroundSettings: React.FC<BackgroundSettingsProps> = ({ onSettingsChang
           {settings.type !== 'default' && (
             <div className="mt-1 text-emerald-400">
               Background active - opacity: {Math.round(settings.opacity * 100)}%, blur: {settings.blur}px
+              {settings.aiEnhanced && <span className="text-purple-300"> • AI Enhanced</span>}
             </div>
           )}
         </div>
